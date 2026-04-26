@@ -1,0 +1,145 @@
+:root {
+  color: #172033;
+  background: #f7f9fb;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: #0f766e;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0 18px;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+input {
+  width: 100%;
+  border: 1px solid #b9c3cf;
+  border-radius: 8px;
+  margin-top: 6px;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.app-shell {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.home-shell,
+.monitor-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.screen-header {
+  display: grid;
+  gap: 4px;
+}
+
+.eyebrow {
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.05;
+  margin: 0;
+}
+
+.actions,
+.form-grid,
+.pairing-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.actions {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.form-grid {
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 220px) auto;
+}
+
+.pairing-grid {
+  align-items: center;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.status {
+  border-left: 4px solid #0f766e;
+  border-radius: 8px;
+  background: #e7f7f3;
+  margin: 0;
+  padding: 12px;
+}
+
+.label,
+.hint {
+  color: #4b5563;
+  margin: 0;
+}
+
+.pin {
+  color: #111827;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 4px 0 8px;
+}
+
+.danger {
+  background: #b91c1c;
+}
+
+video {
+  width: 100%;
+  max-height: 68vh;
+  min-height: 220px;
+  background: #020617;
+  border-radius: 8px;
+}
+
+canvas {
+  max-width: 100%;
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .form-grid,
+  .pairing-grid {
+    grid-template-columns: 1fr;
+  }
+}
