@@ -26,6 +26,16 @@ export async function requestWakeLock(
   }
 }
 
+export async function releaseWakeLock(
+  sentinel: WakeLockSentinelLike | undefined
+): Promise<void> {
+  try {
+    await sentinel?.release?.();
+  } catch {
+    // Wake lock release failures are not actionable during shutdown.
+  }
+}
+
 export function describeCameraError(error: unknown): string {
   if (error instanceof DOMException && error.name === "NotAllowedError") {
     return "Camera permission was denied. Allow camera access and start monitoring again.";

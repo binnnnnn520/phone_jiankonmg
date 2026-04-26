@@ -2,9 +2,55 @@ import type { CreateRoomResponse } from "@phone-monitor/shared";
 import * as QRCode from "qrcode";
 import { createRoom } from "./api.js";
 import { loadClientConfig } from "./config.js";
-import { describeCameraError, requestWakeLock, stopStream } from "./safety.js";
+import {
+  describeCameraError,
+  releaseWakeLock,
+  requestWakeLock,
+  stopStream,
+  type StoppableMediaStream,
+  type WakeLockSentinelLike
+} from "./safety.js";
 import { SignalingClient } from "./signaling-client.js";
-import { createPeer } from "./webrtc.js";
+import { createPeer, type PeerController } from "./webrtc.js";
+
+export interface BuildViewerUrlOptions {
+  origin: string;
+  publicViewerUrl?: string;
+}
+
+export interface StopCameraSessionParams {
+  peerController: Pick<PeerController, "close">;
+  signaling?: Pick<SignalingClient, "send" | "close">;
+  stream?: StoppableMediaStream;
+  wakeLock?: WakeLockSentinelLike;
+  roomId: string;
+}
+
+export function buildViewerUrl(
+  roomId: string,
+  options: BuildViewerUrlOptions
+): string {
+  const publicViewerUrl = options.publicViewerUrl?.trim();
+  const url = publicViewerUrl
+    ? new URL(publicViewerUrl)
+    : new URL("/", options.origin);
+  url.searchParams.set("room", roomId);
+  return url.toString();
+}
+
+export async function stopCameraSession(
+  params: StopCameraSessionParams
+): Promise<void> {
+  params.peerController.close();
+  params.signaling?.send({
+    type: "session-ended",
+    roomId: params.roomId,
+    reason: "Camera stopped monitoring"
+  });
+  params.signaling?.close();
+  if (params.stream) stopStream(params.stream);
+  await releaseWakeLock(params.wakeLock);
+}
 
 export async function renderCamera(app: HTMLElement): Promise<void> {
   const config = loadClientConfig();
@@ -36,9 +82,10 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
 
   let stream: MediaStream | undefined;
   let signaling: SignalingClient | undefined;
+  let wakeLock: WakeLockSentinelLike | undefined;
 
   try {
-    await requestWakeLock();
+    wakeLock = await requestWakeLock();
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment" },
       audio: false
@@ -46,7 +93,13 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
     preview.srcObject = stream;
 
     const room: CreateRoomResponse = await createRoom(config);
-    await QRCode.toCanvas(qr, room.qrPayload, { width: 180, margin: 1 });
+    const viewerUrl = buildViewerUrl(room.roomId, {
+      origin: window.location.origin,
+      ...(config.publicViewerUrl
+        ? { publicViewerUrl: config.publicViewerUrl }
+        : {})
+    });
+    await QRCode.toCanvas(qr, viewerUrl, { width: 180, margin: 1 });
     pin.textContent = room.pin;
     status.textContent = "Camera is visible and waiting for a viewer.";
 
@@ -83,20 +136,21 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
     });
 
     stop.addEventListener("click", () => {
-      peerController.close();
-      signaling?.send({
-        type: "session-ended",
-        roomId: room.roomId,
-        reason: "Camera stopped monitoring"
-      });
-      signaling?.close();
-      if (stream) stopStream(stream);
-      status.textContent = "Session ended";
       stop.disabled = true;
+      void stopCameraSession({
+        peerController,
+        roomId: room.roomId,
+        ...(signaling ? { signaling } : {}),
+        ...(stream ? { stream } : {}),
+        ...(wakeLock ? { wakeLock } : {})
+      }).finally(() => {
+        status.textContent = "Session ended";
+      });
     });
   } catch (error) {
     status.textContent = describeCameraError(error);
     if (stream) stopStream(stream);
     signaling?.close();
+    await releaseWakeLock(wakeLock);
   }
 }

@@ -11,6 +11,7 @@ import {
 } from "./signaling-client.js";
 import {
   createPeer as createPeerController,
+  flushQueuedIceCandidates,
   type CreatePeerParams,
   type PeerController
 } from "./webrtc.js";
@@ -65,7 +66,16 @@ export async function startViewerSession(
   });
 
   signaling.onMessage((message) => {
-    handleViewerSignal(message, params.roomId, signaling, controller, params.onState);
+    handleViewerSignal(
+      message,
+      params.roomId,
+      signaling,
+      controller,
+      params.onState,
+      () => {
+        params.video.srcObject = null;
+      }
+    );
   });
 
   signaling.send({
@@ -89,17 +99,28 @@ function handleViewerSignal(
   roomId: string,
   signaling: SignalingClientLike,
   controller: PeerController,
-  onState: (state: UserFacingConnectionState) => void
+  onState: (state: UserFacingConnectionState) => void,
+  clearRemoteVideo: () => void
 ): void {
   if (message.type === "offer") {
-    void controller.peer.setRemoteDescription(message.sdp).then(async () => {
-      const answer = await controller.peer.createAnswer();
-      await controller.peer.setLocalDescription(answer);
-      signaling.send({ type: "answer", roomId, sdp: answer });
-    });
+    void controller.peer
+      .setRemoteDescription(message.sdp)
+      .then(async () => {
+        await flushQueuedIceCandidates(controller.peer);
+        const answer = await controller.peer.createAnswer();
+        await controller.peer.setLocalDescription(answer);
+        signaling.send({ type: "answer", roomId, sdp: answer });
+      })
+      .catch(() => {
+        onState("Retry needed");
+      });
   }
-  if (message.type === "peer-left" || message.type === "session-ended") {
+  if (message.type === "peer-left") {
     onState("Camera offline");
+  }
+  if (message.type === "session-ended") {
+    clearRemoteVideo();
+    onState("Session ended");
   }
   if (message.type === "error") {
     onState("Retry needed");
@@ -109,30 +130,67 @@ function handleViewerSignal(
 export function renderViewer(app: HTMLElement): void {
   const params = new URLSearchParams(window.location.search);
   const initialRoom = params.get("room") ?? "";
-  app.innerHTML = `
-    <section class="app-shell monitor-panel">
-      <header class="screen-header">
-        <p class="eyebrow">Viewer</p>
-        <h1>Live Monitor</h1>
-      </header>
-      <p class="status" id="status" role="status">Enter the room and PIN from the camera phone.</p>
-      <form class="form-grid" id="viewer-form">
-        <label>Room <input id="room" autocomplete="off" value="${initialRoom}" /></label>
-        <label>PIN <input id="pin" autocomplete="one-time-code" inputmode="numeric" maxlength="6" /></label>
-        <button id="connect" type="submit">Connect</button>
-      </form>
-      <video id="remote" autoplay playsinline controls></video>
-      <button class="danger" id="disconnect" type="button">Disconnect</button>
-    </section>
-  `;
+  const doc = app.ownerDocument;
+
+  const section = doc.createElement("section");
+  section.className = "app-shell monitor-panel";
+
+  const header = doc.createElement("header");
+  header.className = "screen-header";
+  const eyebrow = doc.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Viewer";
+  const heading = doc.createElement("h1");
+  heading.textContent = "Live Monitor";
+  header.append(eyebrow, heading);
+
+  const status = doc.createElement("p");
+  status.className = "status";
+  status.id = "status";
+  status.setAttribute("role", "status");
+  status.textContent = "Enter the room and PIN from the camera phone.";
+
+  const form = doc.createElement("form");
+  form.className = "form-grid";
+  form.id = "viewer-form";
+
+  const roomLabel = doc.createElement("label");
+  const roomInput = doc.createElement("input");
+  roomInput.id = "room";
+  roomInput.autocomplete = "off";
+  roomInput.value = initialRoom;
+  roomLabel.append("Room ", roomInput);
+
+  const pinLabel = doc.createElement("label");
+  const pinInput = doc.createElement("input");
+  pinInput.id = "pin";
+  pinInput.autocomplete = "one-time-code";
+  pinInput.inputMode = "numeric";
+  pinInput.maxLength = 6;
+  pinLabel.append("PIN ", pinInput);
+
+  const connect = doc.createElement("button");
+  connect.id = "connect";
+  connect.type = "submit";
+  connect.textContent = "Connect";
+  form.append(roomLabel, pinLabel, connect);
+
+  const video = doc.createElement("video");
+  video.id = "remote";
+  video.autoplay = true;
+  video.playsInline = true;
+  video.controls = true;
+
+  const disconnect = doc.createElement("button");
+  disconnect.className = "danger";
+  disconnect.id = "disconnect";
+  disconnect.type = "button";
+  disconnect.textContent = "Disconnect";
+
+  section.append(header, status, form, video, disconnect);
+  app.replaceChildren(section);
 
   const config = loadClientConfig();
-  const roomInput = app.querySelector<HTMLInputElement>("#room")!;
-  const pinInput = app.querySelector<HTMLInputElement>("#pin")!;
-  const status = app.querySelector<HTMLParagraphElement>("#status")!;
-  const video = app.querySelector<HTMLVideoElement>("#remote")!;
-  const form = app.querySelector<HTMLFormElement>("#viewer-form")!;
-  const disconnect = app.querySelector<HTMLButtonElement>("#disconnect")!;
   let session: ViewerSession | undefined;
 
   form.addEventListener("submit", (event) => {
