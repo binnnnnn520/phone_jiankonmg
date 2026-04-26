@@ -17,9 +17,19 @@ interface RoomRecord {
   salt: string;
   pinFailedAttempts: number;
   expiresAt: number;
+  cameraToken: string;
+  cameraConnected: boolean;
   viewerToken?: string;
+  viewerTokenIssuedAt?: number;
   viewerConnected: boolean;
 }
+
+export type CameraAdmissionResult =
+  | "accepted"
+  | "already-connected"
+  | "rejected";
+
+const DEFAULT_VIEWER_TOKEN_TTL_MS = 30000;
 
 export class RoomStore {
   private readonly rooms = new Map<RoomId, RoomRecord>();
@@ -29,6 +39,7 @@ export class RoomStore {
       publicHttpUrl: string;
       roomTtlMs: number;
       pinMaxAttempts: number;
+      viewerTokenTtlMs?: number;
       iceServers: IceServerConfig[];
       now: () => number;
     }
@@ -41,6 +52,7 @@ export class RoomStore {
       maxAttempts: this.params.pinMaxAttempts
     });
     const salt = randomBytes(12).toString("base64url");
+    const cameraToken = randomBytes(18).toString("base64url");
     const expiresAt = this.params.now() + this.params.roomTtlMs;
 
     this.rooms.set(roomId, {
@@ -49,12 +61,15 @@ export class RoomStore {
       salt,
       pinFailedAttempts: 0,
       expiresAt,
+      cameraToken,
+      cameraConnected: false,
       viewerConnected: false
     });
 
     return {
       roomId,
       pin,
+      cameraToken,
       expiresAt,
       qrPayload: `${this.params.publicHttpUrl}/?room=${encodeURIComponent(
         roomId
@@ -66,6 +81,7 @@ export class RoomStore {
   verifyPin(roomId: RoomId, pin: string): VerifyPinResponse {
     const room = this.getActiveRoom(roomId);
     if (!room) throw new Error("ROOM_EXPIRED");
+    this.clearExpiredPendingViewer(room);
     if (room.viewerConnected) throw new Error("VIEWER_ALREADY_CONNECTED");
     if (room.viewerToken) throw new Error("VIEWER_ALREADY_RESERVED");
 
@@ -85,6 +101,7 @@ export class RoomStore {
     }
 
     room.viewerToken = randomBytes(18).toString("base64url");
+    room.viewerTokenIssuedAt = this.params.now();
     return {
       roomId,
       viewerToken: room.viewerToken,
@@ -98,6 +115,7 @@ export class RoomStore {
 
   consumeViewerToken(roomId: RoomId, token: string): boolean {
     const room = this.getActiveRoom(roomId);
+    if (room) this.clearExpiredPendingViewer(room);
     if (!room || room.viewerToken !== token || room.viewerConnected) {
       return false;
     }
@@ -111,6 +129,23 @@ export class RoomStore {
     if (room) {
       room.viewerConnected = false;
       delete room.viewerToken;
+      delete room.viewerTokenIssuedAt;
+    }
+  }
+
+  admitCamera(roomId: RoomId, token: string): CameraAdmissionResult {
+    const room = this.getActiveRoom(roomId);
+    if (!room || room.cameraToken !== token) return "rejected";
+    if (room.cameraConnected) return "already-connected";
+
+    room.cameraConnected = true;
+    return "accepted";
+  }
+
+  releaseCamera(roomId: RoomId): void {
+    const room = this.rooms.get(roomId);
+    if (room) {
+      room.cameraConnected = false;
     }
   }
 
@@ -122,5 +157,21 @@ export class RoomStore {
       return undefined;
     }
     return room;
+  }
+
+  private clearExpiredPendingViewer(room: RoomRecord): void {
+    if (
+      room.viewerConnected ||
+      !room.viewerToken ||
+      room.viewerTokenIssuedAt === undefined
+    ) {
+      return;
+    }
+
+    const ttl = this.params.viewerTokenTtlMs ?? DEFAULT_VIEWER_TOKEN_TTL_MS;
+    if (this.params.now() - room.viewerTokenIssuedAt > ttl) {
+      delete room.viewerToken;
+      delete room.viewerTokenIssuedAt;
+    }
   }
 }

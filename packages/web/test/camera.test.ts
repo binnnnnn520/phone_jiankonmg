@@ -7,6 +7,10 @@ import type {
 } from "../src/safety.js";
 
 type CameraModule = typeof import("../src/camera.js") & {
+  buildCameraJoinMessage?: (room: {
+    roomId: string;
+    cameraToken: string;
+  }) => SignalingMessage;
   buildViewerUrl?: (
     roomId: string,
     options: { origin: string; publicViewerUrl?: string }
@@ -47,6 +51,23 @@ test("buildViewerUrl uses a configured public viewer base when provided", async 
       publicViewerUrl: "https://public.example/monitor?source=qr"
     }),
     "https://public.example/monitor?source=qr&room=room%2F1"
+  );
+});
+
+test("buildCameraJoinMessage includes the room's private camera token", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCameraJoinMessage, "function");
+
+  assert.deepEqual(
+    camera.buildCameraJoinMessage!({
+      roomId: "room-1",
+      cameraToken: "camera-token"
+    }),
+    {
+      type: "join-camera",
+      roomId: "room-1",
+      cameraToken: "camera-token"
+    }
   );
 });
 

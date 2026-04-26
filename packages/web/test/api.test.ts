@@ -13,6 +13,7 @@ test("createRoom posts to the room endpoint and returns the server payload", asy
   const responseBody = {
     roomId: "room-1",
     pin: "123456",
+    cameraToken: "camera-token",
     expiresAt: 1234,
     qrPayload: "https://signal.example/?room=room-1",
     iceServers: [{ urls: "stun:example.test" }]

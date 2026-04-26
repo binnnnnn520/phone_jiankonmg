@@ -22,3 +22,13 @@ test("viewer join message carries an admission token", () => {
 
   assert.equal(message.viewerToken, "viewer-token");
 });
+
+test("camera join message carries an admission token", () => {
+  const message: SignalingMessage = {
+    type: "join-camera",
+    roomId: "room-1",
+    cameraToken: "camera-token"
+  };
+
+  assert.equal(message.cameraToken, "camera-token");
+});

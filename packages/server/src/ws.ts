@@ -37,7 +37,7 @@ function parseSignalingMessage(raw: string): SignalingMessage | undefined {
 
   switch (value.type) {
     case "join-camera":
-      return hasString(value, "roomId")
+      return hasString(value, "roomId") && hasString(value, "cameraToken")
         ? (value as SignalingMessage)
         : undefined;
     case "join-viewer":
@@ -105,10 +105,19 @@ export function createSignalingServer(
 
   function forward(sender: Peer, message: SignalingMessage): void {
     for (const peer of roomPeers(sender.roomId)) {
-      if (peer.socket !== sender.socket) {
+      if (peer.socket !== sender.socket && peer.role !== sender.role) {
         send(peer.socket, message);
       }
     }
+  }
+
+  function canSendMessage(
+    role: PeerRole,
+    message: ClientForwardableMessage
+  ): boolean {
+    if (message.type === "offer") return role === "camera";
+    if (message.type === "answer") return role === "viewer";
+    return true;
   }
 
   function notifyCameraAboutWaitingViewers(camera: Peer): void {
@@ -150,11 +159,23 @@ export function createSignalingServer(
       }
 
       if (message.type === "join-camera") {
-        if (!store.hasRoom(message.roomId)) {
+        const cameraAdmission = store.admitCamera(
+          message.roomId,
+          message.cameraToken
+        );
+        if (cameraAdmission === "already-connected") {
           send(socket, {
             type: "error",
-            code: "ROOM_NOT_FOUND",
-            message: "Room expired or not found"
+            code: "CAMERA_ALREADY_CONNECTED",
+            message: "Camera already connected"
+          });
+          return;
+        }
+        if (cameraAdmission === "rejected") {
+          send(socket, {
+            type: "error",
+            code: "CAMERA_REJECTED",
+            message: "Camera token rejected"
           });
           return;
         }
@@ -217,6 +238,15 @@ export function createSignalingServer(
         return;
       }
 
+      if (!canSendMessage(currentPeer.role, message)) {
+        send(socket, {
+          type: "error",
+          code: "SIGNALING_ROLE_REJECTED",
+          message: "Message type cannot be sent by this role"
+        });
+        return;
+      }
+
       forward(currentPeer, message);
     });
 
@@ -230,6 +260,9 @@ export function createSignalingServer(
 
       if (currentPeer.role === "viewer") {
         store.releaseViewer(currentPeer.roomId);
+      }
+      if (currentPeer.role === "camera") {
+        store.releaseCamera(currentPeer.roomId);
       }
 
       for (const peer of nextPeers) {

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import test from "node:test";
 import { WebSocket, type RawData } from "ws";
-import type { SignalingMessage } from "@phone-monitor/shared";
+import type {
+  CreateRoomResponse,
+  SignalingMessage
+} from "@phone-monitor/shared";
 import { RoomStore } from "../src/store.js";
 import { createSignalingServer } from "../src/ws.js";
 
@@ -55,6 +58,18 @@ function openSocket(url: string): Promise<WebSocket> {
 
 function send(socket: WebSocket, message: SignalingMessage): void {
   socket.send(JSON.stringify(message));
+}
+
+function sendRaw(socket: WebSocket, message: unknown): void {
+  socket.send(JSON.stringify(message));
+}
+
+function joinCamera(socket: WebSocket, room: CreateRoomResponse): void {
+  send(socket, {
+    type: "join-camera",
+    roomId: room.roomId,
+    cameraToken: room.cameraToken
+  });
 }
 
 function nextMessage(socket: WebSocket): Promise<SignalingMessage> {
@@ -148,7 +163,7 @@ test("routes viewer joins and WebRTC messages between paired peers", async () =>
   const viewer = await openSocket(app.wsUrl);
 
   try {
-    send(camera, { type: "join-camera", roomId: room.roomId });
+    joinCamera(camera, room);
     send(viewer, {
       type: "join-viewer",
       roomId: room.roomId,
@@ -193,7 +208,7 @@ test("notifies a camera when a verified viewer is already waiting", async () => 
       roomId: room.roomId,
       viewerToken: verified.viewerToken
     });
-    send(camera, { type: "join-camera", roomId: room.roomId });
+    joinCamera(camera, room);
 
     const message = await nextMessage(camera);
     assert.equal(message.type, "join-viewer");
@@ -220,7 +235,7 @@ test("rejects duplicate joins while preserving viewer cleanup", async () => {
       viewerToken: verified.viewerToken
     });
 
-    send(viewer, { type: "join-camera", roomId: room.roomId });
+    joinCamera(viewer, room);
     assert.deepEqual(await nextMessage(viewer), {
       type: "error",
       code: "ALREADY_JOINED",
@@ -239,7 +254,7 @@ test("rejects duplicate joins while preserving viewer cleanup", async () => {
       roomId: room.roomId,
       viewerToken: replacementVerified.viewerToken
     });
-    send(camera, { type: "join-camera", roomId: room.roomId });
+    joinCamera(camera, room);
 
     assert.deepEqual(await nextMessage(camera), {
       type: "join-viewer",
@@ -281,6 +296,167 @@ test("rejects a viewer without a valid admission token", async () => {
   }
 });
 
+test("rejects a camera joiner that only knows the room ID", async () => {
+  const store = createStore();
+  const room = store.createRoom();
+  const app = await startSignalingServer(store);
+  const attacker = await openSocket(app.wsUrl);
+
+  try {
+    sendRaw(attacker, { type: "join-camera", roomId: room.roomId });
+
+    assert.deepEqual(await nextMessage(attacker), {
+      type: "error",
+      code: "BAD_MESSAGE",
+      message: "Message must match the signaling protocol"
+    });
+  } finally {
+    await closeSocket(attacker);
+    await app.close();
+  }
+});
+
+test("keeps a rejected camera out of the signaling path", async () => {
+  const store = createStore();
+  const room = store.createRoom();
+  const verified = store.verifyPin(room.roomId, room.pin);
+  const app = await startSignalingServer(store);
+  const attacker = await openSocket(app.wsUrl);
+  const camera = await openSocket(app.wsUrl);
+  const viewer = await openSocket(app.wsUrl);
+
+  try {
+    sendRaw(attacker, {
+      type: "join-camera",
+      roomId: room.roomId,
+      cameraToken: "wrong-camera-token"
+    });
+    assert.deepEqual(await nextMessage(attacker), {
+      type: "error",
+      code: "CAMERA_REJECTED",
+      message: "Camera token rejected"
+    });
+
+    sendRaw(camera, {
+      type: "join-camera",
+      roomId: room.roomId,
+      cameraToken: room.cameraToken
+    });
+    send(viewer, {
+      type: "join-viewer",
+      roomId: room.roomId,
+      viewerToken: verified.viewerToken
+    });
+    assert.deepEqual(await nextMessage(camera), {
+      type: "join-viewer",
+      roomId: room.roomId,
+      viewerToken: verified.viewerToken
+    });
+    await expectNoMessage(attacker);
+
+    sendRaw(attacker, {
+      type: "offer",
+      roomId: room.roomId,
+      sdp: { type: "offer", sdp: "v=0\r\n" }
+    });
+    assert.deepEqual(await nextMessage(attacker), {
+      type: "error",
+      code: "JOIN_REQUIRED",
+      message: "Join a room before signaling"
+    });
+    await expectNoMessage(viewer);
+  } finally {
+    await Promise.all([
+      closeSocket(attacker),
+      closeSocket(camera),
+      closeSocket(viewer)
+    ]);
+    await app.close();
+  }
+});
+
+test("enforces one connected camera per room", async () => {
+  const store = createStore();
+  const room = store.createRoom();
+  const app = await startSignalingServer(store);
+  const firstCamera = await openSocket(app.wsUrl);
+  const secondCamera = await openSocket(app.wsUrl);
+
+  try {
+    sendRaw(firstCamera, {
+      type: "join-camera",
+      roomId: room.roomId,
+      cameraToken: room.cameraToken
+    });
+    sendRaw(secondCamera, {
+      type: "join-camera",
+      roomId: room.roomId,
+      cameraToken: room.cameraToken
+    });
+
+    assert.deepEqual(await nextMessage(secondCamera), {
+      type: "error",
+      code: "CAMERA_ALREADY_CONNECTED",
+      message: "Camera already connected"
+    });
+  } finally {
+    await Promise.all([closeSocket(firstCamera), closeSocket(secondCamera)]);
+    await app.close();
+  }
+});
+
+test("rejects role-invalid offer and answer messages without forwarding them", async () => {
+  const store = createStore();
+  const room = store.createRoom();
+  const verified = store.verifyPin(room.roomId, room.pin);
+  const app = await startSignalingServer(store);
+  const camera = await openSocket(app.wsUrl);
+  const viewer = await openSocket(app.wsUrl);
+
+  try {
+    sendRaw(camera, {
+      type: "join-camera",
+      roomId: room.roomId,
+      cameraToken: room.cameraToken
+    });
+    send(viewer, {
+      type: "join-viewer",
+      roomId: room.roomId,
+      viewerToken: verified.viewerToken
+    });
+    await nextMessage(camera);
+
+    const viewerErrorPromise = nextMessage(viewer);
+    send(viewer, {
+      type: "offer",
+      roomId: room.roomId,
+      sdp: { type: "offer", sdp: "v=0\r\n" }
+    });
+    await expectNoMessage(camera);
+    assert.deepEqual(await viewerErrorPromise, {
+      type: "error",
+      code: "SIGNALING_ROLE_REJECTED",
+      message: "Message type cannot be sent by this role"
+    });
+
+    const cameraErrorPromise = nextMessage(camera);
+    send(camera, {
+      type: "answer",
+      roomId: room.roomId,
+      sdp: { type: "answer", sdp: "v=0\r\n" }
+    });
+    await expectNoMessage(viewer);
+    assert.deepEqual(await cameraErrorPromise, {
+      type: "error",
+      code: "SIGNALING_ROLE_REJECTED",
+      message: "Message type cannot be sent by this role"
+    });
+  } finally {
+    await Promise.all([closeSocket(camera), closeSocket(viewer)]);
+    await app.close();
+  }
+});
+
 test("requires clients to join a room before sending WebRTC messages", async () => {
   const store = createStore();
   const app = await startSignalingServer(store);
@@ -314,7 +490,7 @@ test("rejects room-mismatched signaling after join without forwarding it", async
   const viewer = await openSocket(app.wsUrl);
 
   try {
-    send(camera, { type: "join-camera", roomId: room.roomId });
+    joinCamera(camera, room);
     send(viewer, {
       type: "join-viewer",
       roomId: room.roomId,
@@ -349,7 +525,7 @@ test("rejects client-supplied peer-left and error messages without forwarding th
   const viewer = await openSocket(app.wsUrl);
 
   try {
-    send(camera, { type: "join-camera", roomId: room.roomId });
+    joinCamera(camera, room);
     send(viewer, {
       type: "join-viewer",
       roomId: room.roomId,
@@ -395,7 +571,7 @@ test("forwards room-matched session-ended messages from joined peers", async () 
   const viewer = await openSocket(app.wsUrl);
 
   try {
-    send(camera, { type: "join-camera", roomId: room.roomId });
+    joinCamera(camera, room);
     send(viewer, {
       type: "join-viewer",
       roomId: room.roomId,

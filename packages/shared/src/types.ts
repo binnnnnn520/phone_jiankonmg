@@ -29,6 +29,7 @@ export interface IceServerConfig {
 export interface CreateRoomResponse {
   roomId: RoomId;
   pin: string;
+  cameraToken: string;
   expiresAt: number;
   qrPayload: string;
   iceServers: IceServerConfig[];
@@ -46,7 +47,7 @@ export interface VerifyPinResponse {
 }
 
 export type SignalingMessage =
-  | { type: "join-camera"; roomId: RoomId }
+  | { type: "join-camera"; roomId: RoomId; cameraToken: string }
   | { type: "join-viewer"; roomId: RoomId; viewerToken: string }
   | { type: "offer"; roomId: RoomId; sdp: RTCSessionDescriptionInit }
   | { type: "answer"; roomId: RoomId; sdp: RTCSessionDescriptionInit }

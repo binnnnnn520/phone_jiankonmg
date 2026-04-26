@@ -67,6 +67,7 @@ test("POST /rooms creates a room that can be verified by PIN", async () => {
     const room = (await createResponse.json()) as {
       roomId: string;
       pin: string;
+      cameraToken: string;
       expiresAt: number;
       qrPayload: string;
       iceServers: unknown[];
@@ -74,7 +75,9 @@ test("POST /rooms creates a room that can be verified by PIN", async () => {
 
     assert.equal(createResponse.status, 201);
     assert.match(room.pin, /^[0-9]{6}$/);
+    assert.ok(room.cameraToken.length > 20);
     assert.equal(room.qrPayload, `https://monitor.local/?room=${room.roomId}`);
+    assert.equal(room.qrPayload.includes(room.cameraToken), false);
 
     const verifyResponse = await fetch(`${app.baseUrl}/rooms/verify-pin`, {
       method: "POST",

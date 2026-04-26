@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "node --watch dist/src/index.js",
-    "test": "node --test dist/test/*.test.js",
+    "test": "node dist/test/config.test.js && node dist/test/http.test.js && node dist/test/signaling-contract.test.js && node dist/test/signaling.test.js && node dist/test/store.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

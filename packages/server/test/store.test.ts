@@ -7,13 +7,17 @@ const iceServers: IceServerConfig[] = [
   { urls: "stun:stun.l.google.com:19302" }
 ];
 
-function createStore(now: () => number = () => 1000): RoomStore {
+function createStore(
+  now: () => number = () => 1000,
+  options: { viewerTokenTtlMs?: number } = {}
+): RoomStore {
   return new RoomStore({
     publicHttpUrl: "https://monitor.local",
     roomTtlMs: 60000,
     pinMaxAttempts: 2,
     iceServers,
-    now
+    now,
+    ...options
   });
 }
 
@@ -23,14 +27,18 @@ function wrongPinFor(pin: string): string {
 
 test("creates a short-lived room with QR payload, PIN, and ICE servers", () => {
   const room = createStore().createRoom();
+  const { cameraToken } = room;
 
   assert.match(room.roomId, /^[A-Za-z0-9_-]+$/);
   assert.match(room.pin, /^[0-9]{6}$/);
+  assert.ok(cameraToken);
+  assert.ok(cameraToken.length > 20);
   assert.equal(room.expiresAt, 61000);
   assert.equal(
     room.qrPayload,
     `https://monitor.local/?room=${encodeURIComponent(room.roomId)}`
   );
+  assert.equal(room.qrPayload.includes(cameraToken), false);
   assert.deepEqual(room.iceServers, iceServers);
 });
 
@@ -60,6 +68,29 @@ test("reserves viewer admission after the first successful PIN verification", ()
     /VIEWER_ALREADY_RESERVED/
   );
   assert.equal(store.consumeViewerToken(room.roomId, first.viewerToken), true);
+});
+
+test("expires pending viewer admission when no socket consumes the token", () => {
+  let now = 1000;
+  const store = createStore(() => now, { viewerTokenTtlMs: 50 });
+  const room = store.createRoom();
+
+  const first = store.verifyPin(room.roomId, room.pin);
+  assert.throws(
+    () => store.verifyPin(room.roomId, room.pin),
+    /VIEWER_ALREADY_RESERVED/
+  );
+
+  now = 1051;
+
+  const second = store.verifyPin(room.roomId, room.pin);
+  assert.notEqual(second.viewerToken, first.viewerToken);
+  assert.equal(store.consumeViewerToken(room.roomId, first.viewerToken), false);
+  assert.equal(store.consumeViewerToken(room.roomId, second.viewerToken), true);
+  assert.throws(
+    () => store.verifyPin(room.roomId, room.pin),
+    /VIEWER_ALREADY_CONNECTED/
+  );
 });
 
 test("rejects an expired room and removes it from the store", () => {

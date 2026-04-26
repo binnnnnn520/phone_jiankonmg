@@ -1,4 +1,7 @@
-import type { CreateRoomResponse } from "@phone-monitor/shared";
+import type {
+  CreateRoomResponse,
+  SignalingMessage
+} from "@phone-monitor/shared";
 import * as QRCode from "qrcode";
 import { createRoom } from "./api.js";
 import { loadClientConfig } from "./config.js";
@@ -36,6 +39,16 @@ export function buildViewerUrl(
     : new URL("/", options.origin);
   url.searchParams.set("room", roomId);
   return url.toString();
+}
+
+export function buildCameraJoinMessage(
+  room: Pick<CreateRoomResponse, "roomId" | "cameraToken">
+): SignalingMessage {
+  return {
+    type: "join-camera",
+    roomId: room.roomId,
+    cameraToken: room.cameraToken
+  };
 }
 
 export async function stopCameraSession(
@@ -105,7 +118,7 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
 
     signaling = new SignalingClient(config.wsUrl);
     await signaling.connect();
-    signaling.send({ type: "join-camera", roomId: room.roomId });
+    signaling.send(buildCameraJoinMessage(room));
 
     const peerController = createPeer({
       iceServers: room.iceServers,

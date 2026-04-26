@@ -45,8 +45,18 @@ test("SignalingClient resolves connect on socket open and sends JSON messages", 
   socket.open();
   await connected;
 
-  client.send({ type: "join-camera", roomId: "room-1" });
-  assert.deepEqual(socket.sent, [JSON.stringify({ type: "join-camera", roomId: "room-1" })]);
+  client.send({
+    type: "join-camera",
+    roomId: "room-1",
+    cameraToken: "camera-token"
+  });
+  assert.deepEqual(socket.sent, [
+    JSON.stringify({
+      type: "join-camera",
+      roomId: "room-1",
+      cameraToken: "camera-token"
+    })
+  ]);
 });
 
 test("SignalingClient dispatches parsed signaling messages to listeners", async () => {
@@ -72,7 +82,12 @@ test("SignalingClient refuses to send before the socket is open", () => {
   const client = new SignalingClient("wss://signal.example/ws", () => new FakeSocket());
 
   assert.throws(
-    () => client.send({ type: "join-camera", roomId: "room-1" }),
+    () =>
+      client.send({
+        type: "join-camera",
+        roomId: "room-1",
+        cameraToken: "camera-token"
+      }),
     /socket is not open/
   );
 });
