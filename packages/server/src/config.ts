@@ -9,10 +9,33 @@ export interface ServerConfig {
   iceServers: IceServerConfig[];
 }
 
+const DEFAULT_PORT = 8787;
+const DEFAULT_ROOM_TTL_SECONDS = 600;
+const DEFAULT_PIN_MAX_ATTEMPTS = 5;
+
+function readPositiveNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readPositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readPort(value: string | undefined): number {
+  const port = readPositiveInteger(value, DEFAULT_PORT);
+  return port <= 65535 ? port : DEFAULT_PORT;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
-  const port = Number(env.SIGNALING_PORT ?? "8787");
-  const roomTtlMs = Number(env.ROOM_TTL_SECONDS ?? "600") * 1000;
-  const pinMaxAttempts = Number(env.PIN_MAX_ATTEMPTS ?? "5");
+  const port = readPort(env.SIGNALING_PORT);
+  const roomTtlMs =
+    readPositiveNumber(env.ROOM_TTL_SECONDS, DEFAULT_ROOM_TTL_SECONDS) * 1000;
+  const pinMaxAttempts = readPositiveInteger(
+    env.PIN_MAX_ATTEMPTS,
+    DEFAULT_PIN_MAX_ATTEMPTS
+  );
   const iceServers = JSON.parse(
     env.ICE_SERVERS_JSON ?? '[{"urls":"stun:stun.l.google.com:19302"}]'
   ) as IceServerConfig[];

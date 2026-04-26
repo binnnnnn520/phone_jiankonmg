@@ -67,6 +67,7 @@ export class RoomStore {
     const room = this.getActiveRoom(roomId);
     if (!room) throw new Error("ROOM_EXPIRED");
     if (room.viewerConnected) throw new Error("VIEWER_ALREADY_CONNECTED");
+    if (room.viewerToken) throw new Error("VIEWER_ALREADY_RESERVED");
 
     const result = checkPinAttempt({
       expectedHash: room.pinHash,
@@ -107,7 +108,10 @@ export class RoomStore {
 
   releaseViewer(roomId: RoomId): void {
     const room = this.rooms.get(roomId);
-    if (room) room.viewerConnected = false;
+    if (room) {
+      room.viewerConnected = false;
+      delete room.viewerToken;
+    }
   }
 
   private getActiveRoom(roomId: RoomId): RoomRecord | undefined {

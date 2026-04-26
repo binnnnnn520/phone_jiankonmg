@@ -9,7 +9,13 @@ interface Peer {
   role: PeerRole;
   roomId: string;
   socket: WebSocket;
+  viewerToken?: string;
 }
+
+type ClientForwardableMessage = Extract<
+  SignalingMessage,
+  { type: "offer" | "answer" | "ice-candidate" | "session-ended" }
+>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -64,6 +70,17 @@ function parseSignalingMessage(raw: string): SignalingMessage | undefined {
   }
 }
 
+function isClientForwardable(
+  message: SignalingMessage
+): message is ClientForwardableMessage {
+  return (
+    message.type === "offer" ||
+    message.type === "answer" ||
+    message.type === "ice-candidate" ||
+    message.type === "session-ended"
+  );
+}
+
 export function createSignalingServer(
   server: HttpServer,
   store: RoomStore
@@ -90,6 +107,18 @@ export function createSignalingServer(
     for (const peer of roomPeers(sender.roomId)) {
       if (peer.socket !== sender.socket) {
         send(peer.socket, message);
+      }
+    }
+  }
+
+  function notifyCameraAboutWaitingViewers(camera: Peer): void {
+    for (const peer of roomPeers(camera.roomId)) {
+      if (peer.role === "viewer" && peer.viewerToken) {
+        send(camera.socket, {
+          type: "join-viewer",
+          roomId: camera.roomId,
+          viewerToken: peer.viewerToken
+        });
       }
     }
   }
@@ -124,6 +153,7 @@ export function createSignalingServer(
           socket
         };
         roomPeers(message.roomId).push(currentPeer);
+        notifyCameraAboutWaitingViewers(currentPeer);
         return;
       }
 
@@ -140,7 +170,8 @@ export function createSignalingServer(
         currentPeer = {
           role: "viewer",
           roomId: message.roomId,
-          socket
+          socket,
+          viewerToken: message.viewerToken
         };
         roomPeers(message.roomId).push(currentPeer);
         forward(currentPeer, message);
@@ -152,6 +183,24 @@ export function createSignalingServer(
           type: "error",
           code: "JOIN_REQUIRED",
           message: "Join a room before signaling"
+        });
+        return;
+      }
+
+      if (!isClientForwardable(message)) {
+        send(socket, {
+          type: "error",
+          code: "FORBIDDEN_MESSAGE",
+          message: "Message type cannot be sent by clients"
+        });
+        return;
+      }
+
+      if (message.roomId !== currentPeer.roomId) {
+        send(socket, {
+          type: "error",
+          code: "ROOM_MISMATCH",
+          message: "Message room does not match joined room"
         });
         return;
       }

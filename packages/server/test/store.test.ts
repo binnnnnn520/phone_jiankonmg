@@ -34,7 +34,7 @@ test("creates a short-lived room with QR payload, PIN, and ICE servers", () => {
   assert.deepEqual(room.iceServers, iceServers);
 });
 
-test("verifies a correct PIN and returns a reusable viewer token", () => {
+test("verifies a correct PIN and consumes a viewer token once", () => {
   const store = createStore();
   const room = store.createRoom();
 
@@ -46,7 +46,20 @@ test("verifies a correct PIN and returns a reusable viewer token", () => {
   assert.equal(store.consumeViewerToken(room.roomId, result.viewerToken), true);
   assert.equal(store.consumeViewerToken(room.roomId, result.viewerToken), false);
   store.releaseViewer(room.roomId);
-  assert.equal(store.consumeViewerToken(room.roomId, result.viewerToken), true);
+  assert.equal(store.consumeViewerToken(room.roomId, result.viewerToken), false);
+});
+
+test("reserves viewer admission after the first successful PIN verification", () => {
+  const store = createStore();
+  const room = store.createRoom();
+
+  const first = store.verifyPin(room.roomId, room.pin);
+
+  assert.throws(
+    () => store.verifyPin(room.roomId, room.pin),
+    /VIEWER_ALREADY_RESERVED/
+  );
+  assert.equal(store.consumeViewerToken(room.roomId, first.viewerToken), true);
 });
 
 test("rejects an expired room and removes it from the store", () => {
