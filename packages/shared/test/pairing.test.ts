@@ -51,6 +51,38 @@ test("locks after the final failed PIN attempt", () => {
   );
 });
 
+test("returns locked when PIN attempts are already exhausted", () => {
+  const salt = "room-salt";
+  const expectedHash = hashPin("123456", salt);
+
+  assert.deepEqual(
+    checkPinAttempt({
+      expectedHash,
+      salt,
+      submittedPin: "123456",
+      failedAttempts: 5,
+      maxAttempts: 5
+    }),
+    { ok: false, locked: true, attemptsRemaining: 0 }
+  );
+});
+
+test("decrements attempts without locking on a non-final wrong PIN", () => {
+  const salt = "room-salt";
+  const expectedHash = hashPin("123456", salt);
+
+  assert.deepEqual(
+    checkPinAttempt({
+      expectedHash,
+      salt,
+      submittedPin: "000000",
+      failedAttempts: 2,
+      maxAttempts: 5
+    }),
+    { ok: false, locked: false, attemptsRemaining: 2 }
+  );
+});
+
 test("expires rooms at the configured timestamp", () => {
   assert.equal(isExpired(1000, 999), true);
   assert.equal(isExpired(1000, 1001), false);
