@@ -137,6 +137,18 @@ export function createSignalingServer(
         return;
       }
 
+      if (
+        currentPeer &&
+        (message.type === "join-camera" || message.type === "join-viewer")
+      ) {
+        send(socket, {
+          type: "error",
+          code: "ALREADY_JOINED",
+          message: "Socket already joined a room"
+        });
+        return;
+      }
+
       if (message.type === "join-camera") {
         if (!store.hasRoom(message.roomId)) {
           send(socket, {

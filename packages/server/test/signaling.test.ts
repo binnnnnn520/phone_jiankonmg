@@ -116,6 +116,29 @@ function closeSocket(socket: WebSocket): Promise<void> {
   });
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function verifyPinAfterViewerRelease(
+  store: RoomStore,
+  roomId: string,
+  pin: string
+) {
+  const deadline = Date.now() + 1000;
+
+  while (true) {
+    try {
+      return store.verifyPin(roomId, pin);
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await wait(10);
+    }
+  }
+}
+
 test("routes viewer joins and WebRTC messages between paired peers", async () => {
   const store = createStore();
   const room = store.createRoom();
@@ -177,6 +200,58 @@ test("notifies a camera when a verified viewer is already waiting", async () => 
     assert.equal(message.roomId, room.roomId);
   } finally {
     await Promise.all([closeSocket(camera), closeSocket(viewer)]);
+    await app.close();
+  }
+});
+
+test("rejects duplicate joins while preserving viewer cleanup", async () => {
+  const store = createStore();
+  const room = store.createRoom();
+  const verified = store.verifyPin(room.roomId, room.pin);
+  const app = await startSignalingServer(store);
+  const viewer = await openSocket(app.wsUrl);
+  const replacementViewer = await openSocket(app.wsUrl);
+  const camera = await openSocket(app.wsUrl);
+
+  try {
+    send(viewer, {
+      type: "join-viewer",
+      roomId: room.roomId,
+      viewerToken: verified.viewerToken
+    });
+
+    send(viewer, { type: "join-camera", roomId: room.roomId });
+    assert.deepEqual(await nextMessage(viewer), {
+      type: "error",
+      code: "ALREADY_JOINED",
+      message: "Socket already joined a room"
+    });
+
+    await closeSocket(viewer);
+
+    const replacementVerified = await verifyPinAfterViewerRelease(
+      store,
+      room.roomId,
+      room.pin
+    );
+    send(replacementViewer, {
+      type: "join-viewer",
+      roomId: room.roomId,
+      viewerToken: replacementVerified.viewerToken
+    });
+    send(camera, { type: "join-camera", roomId: room.roomId });
+
+    assert.deepEqual(await nextMessage(camera), {
+      type: "join-viewer",
+      roomId: room.roomId,
+      viewerToken: replacementVerified.viewerToken
+    });
+  } finally {
+    await Promise.all([
+      closeSocket(camera),
+      closeSocket(replacementViewer),
+      closeSocket(viewer)
+    ]);
     await app.close();
   }
 });
