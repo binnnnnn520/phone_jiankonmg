@@ -85,7 +85,8 @@ test("camera and viewer pair over local signaling", async ({ page }) => {
       );
     });
     await viewer.getByRole("button", { name: "Connect", exact: true }).click();
-    await expect(await verifyResponsePromise).toBeOK();
+    const verifyResponse = await verifyResponsePromise;
+    expect(verifyResponse.ok()).toBe(true);
 
     await expect(viewer.getByRole("status")).toHaveText(
       /connecting|live|using relay connection/i
