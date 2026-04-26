@@ -104,10 +104,12 @@ Create `.env.example`:
 SIGNALING_HOST=0.0.0.0
 SIGNALING_PORT=8787
 PUBLIC_SIGNALING_HTTP_URL=http://localhost:8787
-PUBLIC_SIGNALING_WS_URL=ws://localhost:8787/ws
 ROOM_TTL_SECONDS=600
 PIN_MAX_ATTEMPTS=5
 ICE_SERVERS_JSON=[{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:localhost:3478","username":"local-dev","credential":"local-dev"}]
+VITE_SIGNALING_HTTP_URL=http://localhost:8787
+VITE_SIGNALING_WS_URL=ws://localhost:8787/ws
+VITE_PUBLIC_VIEWER_URL=http://localhost:5173/
 ```
 
 - [ ] **Step 2: Create the shared package**
@@ -1900,11 +1902,16 @@ Create `docs/operations/turn-and-signaling.md`:
 
 ## Required Environment
 
+Server:
 - `PUBLIC_SIGNALING_HTTP_URL`: public HTTPS signaling API URL.
-- `PUBLIC_SIGNALING_WS_URL`: public WSS signaling WebSocket URL.
 - `ICE_SERVERS_JSON`: JSON array of STUN and TURN servers.
 - `ROOM_TTL_SECONDS`: short room lifetime, default 600.
 - `PIN_MAX_ATTEMPTS`: bounded PIN attempts, default 5.
+
+Browser PWA:
+- `VITE_SIGNALING_HTTP_URL`: public HTTPS signaling API URL used by the browser.
+- `VITE_SIGNALING_WS_URL`: public WSS signaling WebSocket URL used by the browser.
+- `VITE_PUBLIC_VIEWER_URL`: public Viewer PWA URL placed in the camera QR code.
 
 ## Cost Guardrails
 
@@ -1952,4 +1959,3 @@ git commit -m "Document TURN cost and privacy guardrails" \
 - [ ] Open `http://localhost:5173/?mode=viewer` in another browser tab.
 - [ ] Confirm camera room creation, PIN display, viewer PIN entry, and live fake-media playback in local smoke testing.
 - [ ] Complete `docs/testing/manual-remote-validation.md` after deployment to HTTPS with real STUN/TURN configuration.
-
