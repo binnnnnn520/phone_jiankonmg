@@ -1,0 +1,207 @@
+import assert from "node:assert/strict";
+import { createServer, type Server } from "node:http";
+import test from "node:test";
+import { WebSocket } from "ws";
+import type { SignalingMessage } from "@phone-monitor/shared";
+import { RoomStore } from "../src/store.js";
+import { createSignalingServer } from "../src/ws.js";
+
+function createStore(): RoomStore {
+  return new RoomStore({
+    publicHttpUrl: "https://monitor.local",
+    roomTtlMs: 60000,
+    pinMaxAttempts: 2,
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    now: () => 1000
+  });
+}
+
+async function startSignalingServer(store: RoomStore): Promise<{
+  wsUrl: string;
+  close: () => Promise<void>;
+}> {
+  const server = createServer();
+  createSignalingServer(server, store);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+
+  return {
+    wsUrl: `ws://127.0.0.1:${address.port}/ws`,
+    close: () => closeServer(server)
+  };
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function openSocket(url: string): Promise<WebSocket> {
+  const socket = new WebSocket(url);
+  return new Promise((resolve, reject) => {
+    socket.once("open", () => resolve(socket));
+    socket.once("error", reject);
+  });
+}
+
+function send(socket: WebSocket, message: SignalingMessage): void {
+  socket.send(JSON.stringify(message));
+}
+
+function nextMessage(socket: WebSocket): Promise<SignalingMessage> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Timed out waiting for WebSocket message"));
+    }, 1000);
+
+    socket.once("message", (raw) => {
+      clearTimeout(timeout);
+      resolve(JSON.parse(raw.toString()) as SignalingMessage);
+    });
+    socket.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+}
+
+function closeSocket(socket: WebSocket): Promise<void> {
+  if (
+    socket.readyState === WebSocket.CLOSING ||
+    socket.readyState === WebSocket.CLOSED
+  ) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    socket.once("close", () => resolve());
+    socket.close();
+  });
+}
+
+test("routes viewer joins and WebRTC messages between paired peers", async () => {
+  const store = createStore();
+  const room = store.createRoom();
+  const verified = store.verifyPin(room.roomId, room.pin);
+  const app = await startSignalingServer(store);
+  const camera = await openSocket(app.wsUrl);
+  const viewer = await openSocket(app.wsUrl);
+
+  try {
+    send(camera, { type: "join-camera", roomId: room.roomId });
+    send(viewer, {
+      type: "join-viewer",
+      roomId: room.roomId,
+      viewerToken: verified.viewerToken
+    });
+
+    const viewerJoin = await nextMessage(camera);
+    assert.equal(viewerJoin.type, "join-viewer");
+
+    const offer: SignalingMessage = {
+      type: "offer",
+      roomId: room.roomId,
+      sdp: { type: "offer", sdp: "v=0\r\n" }
+    };
+    send(camera, offer);
+    assert.deepEqual(await nextMessage(viewer), offer);
+
+    const answer: SignalingMessage = {
+      type: "answer",
+      roomId: room.roomId,
+      sdp: { type: "answer", sdp: "v=0\r\n" }
+    };
+    send(viewer, answer);
+    assert.deepEqual(await nextMessage(camera), answer);
+  } finally {
+    await Promise.all([closeSocket(camera), closeSocket(viewer)]);
+    await app.close();
+  }
+});
+
+test("rejects a viewer without a valid admission token", async () => {
+  const store = createStore();
+  const room = store.createRoom();
+  const app = await startSignalingServer(store);
+  const viewer = await openSocket(app.wsUrl);
+
+  try {
+    send(viewer, {
+      type: "join-viewer",
+      roomId: room.roomId,
+      viewerToken: "bad-token"
+    });
+
+    const message = await nextMessage(viewer);
+    assert.deepEqual(message, {
+      type: "error",
+      code: "VIEWER_REJECTED",
+      message: "Viewer token rejected"
+    });
+  } finally {
+    await closeSocket(viewer);
+    await app.close();
+  }
+});
+
+test("requires clients to join a room before sending WebRTC messages", async () => {
+  const store = createStore();
+  const app = await startSignalingServer(store);
+  const socket = await openSocket(app.wsUrl);
+
+  try {
+    send(socket, {
+      type: "ice-candidate",
+      roomId: "room-1",
+      candidate: { candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host" }
+    });
+
+    const message = await nextMessage(socket);
+    assert.deepEqual(message, {
+      type: "error",
+      code: "JOIN_REQUIRED",
+      message: "Join a room before signaling"
+    });
+  } finally {
+    await closeSocket(socket);
+    await app.close();
+  }
+});
+
+test("rejects malformed WebSocket messages without closing the socket", async () => {
+  const store = createStore();
+  const app = await startSignalingServer(store);
+  const socket = await openSocket(app.wsUrl);
+
+  try {
+    socket.send("{not-json");
+
+    const malformedMessage = await nextMessage(socket);
+    assert.deepEqual(malformedMessage, {
+      type: "error",
+      code: "BAD_MESSAGE",
+      message: "Message must match the signaling protocol"
+    });
+
+    socket.send(JSON.stringify({ type: "not-a-signaling-message" }));
+
+    const unknownMessage = await nextMessage(socket);
+    assert.deepEqual(unknownMessage, {
+      type: "error",
+      code: "BAD_MESSAGE",
+      message: "Message must match the signaling protocol"
+    });
+  } finally {
+    await closeSocket(socket);
+    await app.close();
+  }
+});
