@@ -1,0 +1,8 @@
+.omx/
+.superpowers/
+node_modules/
+dist/
+build/
+.env
+.env.*
+
