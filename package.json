@@ -1,0 +1,22 @@
+{
+  "name": "phone-monitoring-app",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "dev:server": "npm run dev --workspace @phone-monitor/server",
+    "dev:web": "npm run dev --workspace @phone-monitor/web",
+    "test": "npm run test --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.43.0",
+    "@types/node": "^22.15.18",
+    "typescript": "^5.4.0"
+  }
+}
