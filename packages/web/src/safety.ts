@@ -19,7 +19,11 @@ export interface StoppableMediaStream {
 export async function requestWakeLock(
   nav: WakeLockNavigatorLike = navigator as WakeLockNavigatorLike
 ): Promise<WakeLockSentinelLike | undefined> {
-  return nav.wakeLock?.request("screen");
+  try {
+    return await nav.wakeLock?.request("screen");
+  } catch {
+    return undefined;
+  }
 }
 
 export function describeCameraError(error: unknown): string {

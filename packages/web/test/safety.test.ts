@@ -32,6 +32,19 @@ test("requestWakeLock returns undefined when screen wake lock is unavailable", a
   assert.equal(await requestWakeLock({}), undefined);
 });
 
+test("requestWakeLock returns undefined when the browser rejects the wake lock", async () => {
+  assert.equal(
+    await requestWakeLock({
+      wakeLock: {
+        request: async () => {
+          throw new DOMException("Hidden document", "NotAllowedError");
+        }
+      }
+    }),
+    undefined
+  );
+});
+
 test("requestWakeLock asks for a screen wake lock when supported", async () => {
   const calls: string[] = [];
   const sentinel = {};

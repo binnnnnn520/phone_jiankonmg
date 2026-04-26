@@ -12,6 +12,7 @@
     "dev:server": "npm run dev --workspace @phone-monitor/server",
     "dev:web": "npm run dev --workspace @phone-monitor/web",
     "test": "npm run test --workspaces",
+    "test:e2e": "playwright test",
     "typecheck": "npm run typecheck --workspaces"
   },
   "devDependencies": {
