@@ -199,6 +199,7 @@ Version 1 is accepted when these checks pass:
 - TURN relay can become expensive if many users stream for long periods. Version 1 needs operational visibility into relay usage.
 - Old phones may overheat, sleep, throttle, or lose Wi-Fi during all-day use. Version 1 should communicate the foreground/screen-on requirement clearly.
 - Browser support for camera, wake lock, QR scanning, and autoplay can vary by device and browser.
+- TURN relay cost and privacy controls are tracked in `docs/operations/turn-and-signaling.md`.
 
 ## Approved Decisions
 
@@ -210,4 +211,3 @@ Version 1 is accepted when these checks pass:
 - Limit Version 1 to one viewer per camera session.
 - Do not record in Version 1.
 - Future recordings should be stored on the old phone by default.
-
