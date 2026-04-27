@@ -4,8 +4,15 @@ import { describeCameraError, requestWakeLock, stopStream } from "../src/safety.
 
 test("describeCameraError explains denied camera permission", () => {
   assert.match(
-    describeCameraError(new DOMException("Denied", "NotAllowedError")),
+    describeCameraError(new DOMException("Denied", "NotAllowedError"), true),
     /permission was denied/i
+  );
+});
+
+test("describeCameraError explains insecure network origins", () => {
+  assert.match(
+    describeCameraError(new DOMException("Denied", "NotAllowedError"), false),
+    /HTTPS or localhost/i
   );
 });
 

@@ -36,8 +36,14 @@ export async function releaseWakeLock(
   }
 }
 
-export function describeCameraError(error: unknown): string {
+export function describeCameraError(
+  error: unknown,
+  isSecureContext: boolean = globalThis.isSecureContext
+): string {
   if (error instanceof DOMException && error.name === "NotAllowedError") {
+    if (!isSecureContext) {
+      return "Camera access requires HTTPS or localhost. Open this page on localhost for desktop testing, or deploy it over HTTPS for phones.";
+    }
     return "Camera permission was denied. Allow camera access and start monitoring again.";
   }
   if (error instanceof DOMException && error.name === "NotFoundError") {
