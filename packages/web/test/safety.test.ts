@@ -16,6 +16,13 @@ test("describeCameraError explains insecure network origins", () => {
   );
 });
 
+test("describeCameraError explains signaling failures after camera starts", () => {
+  assert.match(
+    describeCameraError(new Error("Could not create monitoring room"), true, true),
+    /signaling server/i
+  );
+});
+
 test("describeCameraError explains missing camera hardware", () => {
   assert.equal(
     describeCameraError(new DOMException("Missing", "NotFoundError")),

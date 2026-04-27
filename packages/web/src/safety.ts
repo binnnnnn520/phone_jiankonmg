@@ -38,7 +38,8 @@ export async function releaseWakeLock(
 
 export function describeCameraError(
   error: unknown,
-  isSecureContext: boolean = globalThis.isSecureContext
+  isSecureContext: boolean = globalThis.isSecureContext,
+  cameraStarted = false
 ): string {
   if (error instanceof DOMException && error.name === "NotAllowedError") {
     if (!isSecureContext) {
@@ -48,6 +49,9 @@ export function describeCameraError(
   }
   if (error instanceof DOMException && error.name === "NotFoundError") {
     return "No camera was found on this device.";
+  }
+  if (cameraStarted) {
+    return "Camera started, but the signaling server could not be reached. Start the signaling server and reload this camera page.";
   }
   return "The camera could not start. Close other camera apps and try again.";
 }

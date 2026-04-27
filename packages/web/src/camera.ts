@@ -161,7 +161,11 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
       });
     });
   } catch (error) {
-    status.textContent = describeCameraError(error);
+    status.textContent = describeCameraError(
+      error,
+      globalThis.isSecureContext,
+      Boolean(stream)
+    );
     if (stream) stopStream(stream);
     signaling?.close();
     await releaseWakeLock(wakeLock);
