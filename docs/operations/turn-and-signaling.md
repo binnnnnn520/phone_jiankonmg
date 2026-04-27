@@ -44,3 +44,7 @@ Room creation returns a private camera admission token to the Camera PWA. Keep t
 
 - Playwright covers local fake-device pairing through room creation, PIN verification, signaling, and remote video stream attachment.
 - Still validate at least one real camera phone and one remote viewer over the deployed HTTPS/WSS/TURN path before treating a deployment as production-ready.
+
+## Deployment Notes
+
+- For the current CentOS 7 public-IP test server, see `docs/operations/centos-7-ip-443-deploy.md`.
