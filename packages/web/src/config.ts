@@ -11,8 +11,15 @@ export interface ClientEnv {
 }
 
 function viteEnv(): ClientEnv {
-  const meta = import.meta as ImportMeta & { env?: ClientEnv };
-  return meta.env ?? {};
+  try {
+    return {
+      VITE_SIGNALING_HTTP_URL: import.meta.env.VITE_SIGNALING_HTTP_URL,
+      VITE_SIGNALING_WS_URL: import.meta.env.VITE_SIGNALING_WS_URL,
+      VITE_PUBLIC_VIEWER_URL: import.meta.env.VITE_PUBLIC_VIEWER_URL
+    };
+  } catch {
+    return {};
+  }
 }
 
 export function loadClientConfig(env: ClientEnv = viteEnv()): ClientConfig {
