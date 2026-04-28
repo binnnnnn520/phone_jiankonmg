@@ -118,7 +118,7 @@ test("camera and viewer back buttons return to the home screen", async ({ page }
   ).toBeVisible();
 });
 
-test("bottom navigation keeps a consistent bottom position and size", async ({ page }) => {
+test("bottom navigation keeps a consistent size without sticking to the viewport bottom", async ({ page }) => {
   const viewports = [
     { width: 320, height: 900 },
     { width: 390, height: 900 },
@@ -140,11 +140,20 @@ test("bottom navigation keeps a consistent bottom position and size", async ({ p
       await readNavBox("/?tab=me")
     ];
     const baselineHeight = Math.round(boxes[0]!.height);
-    const baselineBottom = Math.round(boxes[0]!.y + boxes[0]!.height);
 
     for (const nav of boxes) {
       expect(Math.round(nav.height)).toBe(baselineHeight);
-      expect(Math.round(nav.y + nav.height)).toBe(baselineBottom);
+    }
+
+    for (const path of ["/", "/?tab=me"]) {
+      await page.goto(path);
+      const note = await page.locator(".home-note").boundingBox();
+      const nav = await page.locator(".bottom-nav").boundingBox();
+      expect(note).not.toBeNull();
+      expect(nav).not.toBeNull();
+      const gap = nav!.y - (note!.y + note!.height);
+      expect(gap).toBeGreaterThanOrEqual(12);
+      expect(gap).toBeLessThanOrEqual(28);
     }
   }
 });
