@@ -1,15 +1,26 @@
 import type {
+  IceServerConfig,
   SignalingMessage,
   UserFacingConnectionState,
+  ViewerPairedCamera,
   VerifyPinResponse
 } from "@phone-monitor/shared";
-import { verifyPin as verifyPinRequest } from "./api.js";
+import {
+  reconnectPair,
+  verifyPin as verifyPinRequest
+} from "./api.js";
 import {
   browserConnectionModeStorage,
   chooseConnectionMode,
   resolvePreferredConnectionMode
 } from "./connection-mode.js";
 import { loadClientConfig, type ClientConfig } from "./config.js";
+import {
+  browserPairStorage,
+  getOrCreateDeviceId,
+  readPairedCameras,
+  upsertPairedCamera
+} from "./paired-cameras.js";
 import {
   SignalingClient,
   type SignalingClientLike
@@ -24,7 +35,9 @@ import {
 type VerifyPinFn = (
   config: ClientConfig,
   roomId: string,
-  pin: string
+  pin: string,
+  fetcher?: typeof fetch,
+  pairing?: { viewerDeviceId?: string; displayName?: string }
 ) => Promise<VerifyPinResponse>;
 
 type CreateSignalingClientFn = (wsUrl: string) => SignalingClientLike;
@@ -46,10 +59,25 @@ export interface StartViewerSessionParams {
   config: ClientConfig;
   roomId: string;
   pin: string;
+  viewerDeviceId?: string;
+  video: HTMLVideoElement;
+  onState: (state: UserFacingConnectionState) => void;
+  onPairedCamera?: (pairedCamera: ViewerPairedCamera) => void;
+  deps?: {
+    verifyPin?: VerifyPinFn;
+    createSignalingClient?: CreateSignalingClientFn;
+    createPeer?: CreatePeerFn;
+  };
+}
+
+export interface StartViewerSessionWithTokenParams {
+  config: ClientConfig;
+  roomId: string;
+  viewerToken: string;
+  iceServers: IceServerConfig[];
   video: HTMLVideoElement;
   onState: (state: UserFacingConnectionState) => void;
   deps?: {
-    verifyPin?: VerifyPinFn;
     createSignalingClient?: CreateSignalingClientFn;
     createPeer?: CreatePeerFn;
   };
@@ -59,17 +87,40 @@ export async function startViewerSession(
   params: StartViewerSessionParams
 ): Promise<ViewerSession> {
   const verifyPin = params.deps?.verifyPin ?? verifyPinRequest;
+
+  params.onState("Checking PIN");
+  const verified = await verifyPin(params.config, params.roomId, params.pin, undefined, {
+    ...(params.viewerDeviceId ? { viewerDeviceId: params.viewerDeviceId } : {})
+  });
+  params.onPairedCamera?.(verified.pairedCamera);
+
+  return startViewerSessionWithToken({
+    config: params.config,
+    roomId: params.roomId,
+    viewerToken: verified.viewerToken,
+    iceServers: verified.iceServers,
+    video: params.video,
+    onState: params.onState,
+    deps: {
+      ...(params.deps?.createSignalingClient
+        ? { createSignalingClient: params.deps.createSignalingClient }
+        : {}),
+      ...(params.deps?.createPeer ? { createPeer: params.deps.createPeer } : {})
+    }
+  });
+}
+
+export async function startViewerSessionWithToken(
+  params: StartViewerSessionWithTokenParams
+): Promise<ViewerSession> {
   const createSignalingClient =
     params.deps?.createSignalingClient ?? ((wsUrl) => new SignalingClient(wsUrl));
   const createPeer = params.deps?.createPeer ?? createPeerController;
-
-  params.onState("Checking PIN");
-  const verified = await verifyPin(params.config, params.roomId, params.pin);
   const signaling = createSignalingClient(params.config.wsUrl);
   await signaling.connect();
 
   const controller = createPeer({
-    iceServers: verified.iceServers,
+    iceServers: params.iceServers,
     signaling,
     roomId: params.roomId,
     onState: params.onState,
@@ -94,7 +145,7 @@ export async function startViewerSession(
   signaling.send({
     type: "join-viewer",
     roomId: params.roomId,
-    viewerToken: verified.viewerToken
+    viewerToken: params.viewerToken
   });
   params.onState("Connecting");
 
@@ -229,8 +280,11 @@ async function scanQrIntoRoom(params: {
 export function renderViewer(app: HTMLElement): void {
   const params = new URLSearchParams(window.location.search);
   const initialRoom = params.get("room") ?? "";
+  const reconnectPairId = params.get("pair") ?? "";
   const doc = app.ownerDocument;
   const config = loadClientConfig();
+  const pairStorage = browserPairStorage();
+  const viewerDeviceId = getOrCreateDeviceId(pairStorage);
   const preferredConnectionMode = resolvePreferredConnectionMode({
     params,
     storage: browserConnectionModeStorage(),
@@ -331,6 +385,31 @@ export function renderViewer(app: HTMLElement): void {
   app.replaceChildren(section);
   let session: ViewerSession | undefined;
 
+  async function reconnectFromStoredPair(pairId: string): Promise<void> {
+    const pairedCamera = readPairedCameras(pairStorage).find(
+      (camera) => camera.pairId === pairId
+    );
+    if (!pairedCamera) {
+      status.textContent = "Pair this camera once before reconnecting.";
+      return;
+    }
+
+    status.textContent = "Reconnecting";
+    const reconnected = await reconnectPair(runtimeConfig, pairedCamera);
+    upsertPairedCamera(pairStorage, reconnected.pairedCamera);
+    session?.disconnect();
+    session = await startViewerSessionWithToken({
+      config: runtimeConfig,
+      roomId: reconnected.roomId,
+      viewerToken: reconnected.viewerToken,
+      iceServers: reconnected.iceServers,
+      video,
+      onState: (state) => {
+        status.textContent = state;
+      }
+    });
+  }
+
   scan.addEventListener("click", () => {
     void scanQrIntoRoom({
       panel: scannerPanel,
@@ -356,7 +435,11 @@ export function renderViewer(app: HTMLElement): void {
         config: runtimeConfig,
         roomId,
         pin,
+        viewerDeviceId,
         video,
+        onPairedCamera: (pairedCamera) => {
+          upsertPairedCamera(pairStorage, pairedCamera);
+        },
         onState: (state) => {
           status.textContent = state;
         }
@@ -370,4 +453,10 @@ export function renderViewer(app: HTMLElement): void {
     session?.disconnect();
     session = undefined;
   });
+
+  if (reconnectPairId) {
+    void reconnectFromStoredPair(reconnectPairId).catch((error) => {
+      status.textContent = error instanceof Error ? error.message : "Could not reconnect";
+    });
+  }
 }

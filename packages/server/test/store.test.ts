@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { IceServerConfig } from "@phone-monitor/shared";
 import { RoomStore } from "../src/store.js";
@@ -9,7 +12,7 @@ const iceServers: IceServerConfig[] = [
 
 function createStore(
   now: () => number = () => 1000,
-  options: { viewerTokenTtlMs?: number } = {}
+  options: { viewerTokenTtlMs?: number; pairStoreFile?: string } = {}
 ): RoomStore {
   return new RoomStore({
     publicHttpUrl: "https://monitor.local",
@@ -26,7 +29,7 @@ function wrongPinFor(pin: string): string {
 }
 
 test("creates a short-lived room with QR payload, PIN, and ICE servers", () => {
-  const room = createStore().createRoom();
+  const room = createStore().createRoom({ cameraDeviceId: "camera-device-1" });
   const { cameraToken } = room;
 
   assert.match(room.roomId, /^[A-Za-z0-9_-]+$/);
@@ -40,21 +43,100 @@ test("creates a short-lived room with QR payload, PIN, and ICE servers", () => {
   );
   assert.equal(room.qrPayload.includes(cameraToken), false);
   assert.deepEqual(room.iceServers, iceServers);
+  assert.equal(room.cameraPairing.cameraDeviceId, "camera-device-1");
+  assert.ok(room.cameraPairing.pairId);
+  assert.ok(room.cameraPairing.cameraPairToken);
+});
+
+test("persists paired camera credentials across store instances", () => {
+  const directory = mkdtempSync(join(tmpdir(), "phone-monitor-pairs-"));
+  const pairStoreFile = join(directory, "pairs.json");
+  try {
+    const firstStore = createStore(() => 1000, { pairStoreFile });
+    const firstRoom = firstStore.createRoom({ cameraDeviceId: "camera-device-1" });
+    const verified = firstStore.verifyPin(firstRoom.roomId, firstRoom.pin, {
+      viewerDeviceId: "viewer-device-1"
+    });
+    const cameraPairToken = firstRoom.cameraPairing.cameraPairToken;
+    assert.ok(cameraPairToken);
+
+    const secondStore = createStore(() => 2000, { pairStoreFile });
+    const secondRoom = secondStore.createRoom({
+      pairId: firstRoom.cameraPairing.pairId,
+      cameraDeviceId: firstRoom.cameraPairing.cameraDeviceId,
+      cameraPairToken
+    });
+    assert.equal(secondRoom.cameraPairing.pairId, firstRoom.cameraPairing.pairId);
+    assert.equal(secondStore.admitCamera(secondRoom.roomId, secondRoom.cameraToken), "accepted");
+
+    const reconnected = secondStore.reconnectPair({
+      pairId: verified.pairedCamera.pairId,
+      viewerDeviceId: verified.pairedCamera.viewerDeviceId,
+      viewerPairToken: verified.pairedCamera.viewerPairToken
+    });
+    assert.equal(reconnected.roomId, secondRoom.roomId);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("verifies a correct PIN and consumes a viewer token once", () => {
   const store = createStore();
   const room = store.createRoom();
 
-  const result = store.verifyPin(room.roomId, room.pin);
+  const result = store.verifyPin(room.roomId, room.pin, {
+    viewerDeviceId: "viewer-device-1"
+  });
 
   assert.equal(result.roomId, room.roomId);
   assert.ok(result.viewerToken.length > 20);
   assert.deepEqual(result.iceServers, iceServers);
+  assert.equal(result.pairedCamera.pairId, room.cameraPairing.pairId);
+  assert.equal(result.pairedCamera.viewerDeviceId, "viewer-device-1");
+  assert.ok(result.pairedCamera.viewerPairToken);
   assert.equal(store.consumeViewerToken(room.roomId, result.viewerToken), true);
   assert.equal(store.consumeViewerToken(room.roomId, result.viewerToken), false);
   store.releaseViewer(room.roomId);
   assert.equal(store.consumeViewerToken(room.roomId, result.viewerToken), false);
+});
+
+test("reconnects a paired viewer without requiring the PIN again", () => {
+  const store = createStore();
+  const room = store.createRoom({ cameraDeviceId: "camera-device-1" });
+  const verified = store.verifyPin(room.roomId, room.pin, {
+    viewerDeviceId: "viewer-device-1"
+  });
+  assert.equal(store.admitCamera(room.roomId, room.cameraToken), "accepted");
+
+  const reconnected = store.reconnectPair({
+    pairId: verified.pairedCamera.pairId,
+    viewerDeviceId: verified.pairedCamera.viewerDeviceId,
+    viewerPairToken: verified.pairedCamera.viewerPairToken
+  });
+
+  assert.equal(reconnected.roomId, room.roomId);
+  assert.ok(reconnected.viewerToken.length > 20);
+  assert.notEqual(reconnected.viewerToken, verified.viewerToken);
+  assert.deepEqual(reconnected.iceServers, iceServers);
+  assert.equal(store.consumeViewerToken(room.roomId, reconnected.viewerToken), true);
+});
+
+test("rejects reconnect when the paired camera is offline", () => {
+  const store = createStore();
+  const room = store.createRoom({ cameraDeviceId: "camera-device-1" });
+  const verified = store.verifyPin(room.roomId, room.pin, {
+    viewerDeviceId: "viewer-device-1"
+  });
+
+  assert.throws(
+    () =>
+      store.reconnectPair({
+        pairId: verified.pairedCamera.pairId,
+        viewerDeviceId: verified.pairedCamera.viewerDeviceId,
+        viewerPairToken: verified.pairedCamera.viewerPairToken
+      }),
+    /PAIR_CAMERA_OFFLINE/
+  );
 });
 
 test("reserves viewer admission after the first successful PIN verification", () => {

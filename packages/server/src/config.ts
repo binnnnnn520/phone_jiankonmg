@@ -7,6 +7,7 @@ export interface ServerConfig {
   roomTtlMs: number;
   pinMaxAttempts: number;
   iceServers: IceServerConfig[];
+  pairStoreFile: string;
 }
 
 const DEFAULT_PORT = 8787;
@@ -46,6 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     publicHttpUrl: env.PUBLIC_SIGNALING_HTTP_URL ?? `http://localhost:${port}`,
     roomTtlMs,
     pinMaxAttempts,
-    iceServers
+    iceServers,
+    pairStoreFile: env.PAIR_STORE_FILE ?? "data/pairs.json"
   };
 }

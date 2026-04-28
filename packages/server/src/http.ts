@@ -1,4 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type {
+  CreateRoomRequest,
+  PairReconnectRequest,
+  VerifyPinRequest
+} from "@phone-monitor/shared";
 import type { RoomStore } from "./store.js";
 
 export async function readJson<T>(req: IncomingMessage): Promise<T> {
@@ -8,6 +13,15 @@ export async function readJson<T>(req: IncomingMessage): Promise<T> {
   }
 
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+}
+
+export async function readOptionalJson<T>(req: IncomingMessage): Promise<T> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  return raw ? (JSON.parse(raw) as T) : ({} as T);
 }
 
 export function sendJson(
@@ -38,13 +52,49 @@ export async function handleHttp(
   }
 
   if (req.method === "POST" && url.pathname === "/rooms") {
-    return sendJson(res, 201, store.createRoom());
+    try {
+      const body = await readOptionalJson<CreateRoomRequest>(req);
+      return sendJson(res, 201, store.createRoom(body));
+    } catch (error) {
+      return sendJson(res, 400, {
+        code: error instanceof Error ? error.message : "UNKNOWN_ERROR"
+      });
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/rooms/verify-pin") {
     try {
-      const body = await readJson<{ roomId: string; pin: string }>(req);
-      return sendJson(res, 200, store.verifyPin(body.roomId, body.pin));
+      const body = await readJson<VerifyPinRequest>(req);
+      return sendJson(
+        res,
+        200,
+        store.verifyPin(body.roomId, body.pin, {
+          ...(body.viewerDeviceId ? { viewerDeviceId: body.viewerDeviceId } : {}),
+          ...(body.displayName ? { displayName: body.displayName } : {})
+        })
+      );
+    } catch (error) {
+      return sendJson(res, 400, {
+        code: error instanceof Error ? error.message : "UNKNOWN_ERROR"
+      });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/pairs/reconnect") {
+    try {
+      const body = await readJson<PairReconnectRequest>(req);
+      return sendJson(res, 200, store.reconnectPair(body));
+    } catch (error) {
+      return sendJson(res, 400, {
+        code: error instanceof Error ? error.message : "UNKNOWN_ERROR"
+      });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/pairs/status") {
+    try {
+      const body = await readJson<PairReconnectRequest>(req);
+      return sendJson(res, 200, store.pairStatus(body));
     } catch (error) {
       return sendJson(res, 400, {
         code: error instanceof Error ? error.message : "UNKNOWN_ERROR"

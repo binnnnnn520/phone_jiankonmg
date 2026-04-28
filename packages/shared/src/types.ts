@@ -41,17 +41,64 @@ export interface CreateRoomResponse {
   expiresAt: number;
   qrPayload: string;
   iceServers: IceServerConfig[];
+  cameraPairing: CameraPairingInfo;
+}
+
+export interface CreateRoomRequest {
+  cameraDeviceId?: string;
+  pairId?: string;
+  cameraPairToken?: string;
+  displayName?: string;
+}
+
+export interface CameraPairingInfo {
+  pairId: string;
+  cameraDeviceId: string;
+  displayName: string;
+  cameraPairToken?: string;
 }
 
 export interface VerifyPinRequest {
   roomId: RoomId;
   pin: string;
+  viewerDeviceId?: string;
+  displayName?: string;
 }
 
 export interface VerifyPinResponse {
   roomId: RoomId;
   viewerToken: string;
   iceServers: IceServerConfig[];
+  pairedCamera: ViewerPairedCamera;
+}
+
+export interface ViewerPairedCamera {
+  pairId: string;
+  cameraDeviceId: string;
+  viewerDeviceId: string;
+  viewerPairToken: string;
+  displayName: string;
+  lastConnectedAt: number;
+}
+
+export interface PairReconnectRequest {
+  pairId: string;
+  viewerDeviceId: string;
+  viewerPairToken: string;
+}
+
+export interface PairReconnectResponse {
+  roomId: RoomId;
+  viewerToken: string;
+  iceServers: IceServerConfig[];
+  pairedCamera: ViewerPairedCamera;
+}
+
+export interface PairStatusResponse {
+  pairId: string;
+  displayName: string;
+  status: "live" | "offline";
+  lastSeenAt: number;
 }
 
 export type SignalingMessage =

@@ -11,6 +11,20 @@ type CameraModule = typeof import("../src/camera.js") & {
     roomId: string;
     cameraToken: string;
   }) => SignalingMessage;
+  buildCreateRoomRequest?: (
+    deviceId: string,
+    pairing?: {
+      pairId: string;
+      cameraDeviceId: string;
+      displayName: string;
+      cameraPairToken: string;
+    }
+  ) => {
+    cameraDeviceId: string;
+    displayName: string;
+    pairId?: string;
+    cameraPairToken?: string;
+  };
   buildViewerUrl?: (
     roomId: string,
     options: {
@@ -72,6 +86,26 @@ test("buildCameraShellMarkup shows the approved same Wi-Fi mode copy", async () 
   assert.match(markup, /PIN/);
   assert.match(markup, /Same Wi-Fi/);
   assert.doesNotMatch(markup.toLowerCase(), /server|signaling|turn|nat|deploy/);
+});
+
+test("buildCreateRoomRequest reuses saved camera pairing credentials", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCreateRoomRequest, "function");
+
+  assert.deepEqual(
+    camera.buildCreateRoomRequest!("device-1", {
+      pairId: "pair-1",
+      cameraDeviceId: "camera-device-1",
+      displayName: "Front door",
+      cameraPairToken: "camera-pair-token"
+    }),
+    {
+      cameraDeviceId: "camera-device-1",
+      displayName: "Front door",
+      pairId: "pair-1",
+      cameraPairToken: "camera-pair-token"
+    }
+  );
 });
 
 test("buildViewerUrl uses a configured public viewer base when provided", async () => {

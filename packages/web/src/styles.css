@@ -44,7 +44,13 @@ input {
   background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
 }
 
-.home-shell,
+.home-shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 .monitor-panel {
   display: grid;
   gap: 20px;
@@ -286,6 +292,70 @@ h1 {
   line-height: 1.35;
 }
 
+.paired-camera-empty,
+.paired-camera-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.05);
+}
+
+.paired-camera-empty {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  text-align: center;
+}
+
+.paired-camera-empty h2,
+.paired-camera-empty p,
+.paired-camera-card h2,
+.paired-camera-card p {
+  margin: 0;
+}
+
+.paired-camera-empty h2,
+.paired-camera-card h2 {
+  font-size: 1rem;
+}
+
+.paired-camera-empty p,
+.paired-camera-card p {
+  color: #4b5563;
+  line-height: 1.35;
+}
+
+.paired-camera-list {
+  display: grid;
+  gap: 12px;
+}
+
+.paired-camera-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.paired-camera-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.pair-status {
+  color: #0f766e;
+  font-weight: 750;
+}
+
+.text-danger {
+  min-height: 52px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #dc2626;
+  font-weight: 850;
+}
+
 .home-note::before {
   content: "";
   position: absolute;
@@ -300,10 +370,12 @@ h1 {
 }
 
 .bottom-nav {
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  align-items: center;
   gap: 4px;
-  margin-top: auto;
+  min-height: 74px;
   padding: 12px;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
@@ -311,7 +383,8 @@ h1 {
 }
 
 .bottom-nav-item {
-  min-height: 40px;
+  height: 48px;
+  min-height: 48px;
   display: grid;
   place-items: center;
   border-radius: 10px;

@@ -10,7 +10,8 @@ const store = new RoomStore({
   roomTtlMs: config.roomTtlMs,
   pinMaxAttempts: config.pinMaxAttempts,
   iceServers: config.iceServers,
-  now: () => Date.now()
+  now: () => Date.now(),
+  pairStoreFile: config.pairStoreFile
 });
 
 const server = createServer((req, res) => {

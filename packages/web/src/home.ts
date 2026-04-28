@@ -1,4 +1,4 @@
-import type { ConnectionMode } from "@phone-monitor/shared";
+import type { ConnectionMode, ViewerPairedCamera } from "@phone-monitor/shared";
 
 export type HomeTab = "home" | "cameras" | "me";
 
@@ -65,6 +65,39 @@ function buildActionCards(): string {
   `;
 }
 
+function buildPairedCameraList(pairedCameras: ViewerPairedCamera[]): string {
+  if (pairedCameras.length === 0) {
+    return `
+      <section class="paired-camera-empty">
+        <h2>No paired cameras yet</h2>
+        <p>Pair once with QR and PIN, then reconnect here next time.</p>
+      </section>
+    `;
+  }
+
+  return `
+      <section class="paired-camera-list" aria-label="Paired cameras">
+        ${pairedCameras.map(buildPairedCameraItem).join("")}
+      </section>
+  `;
+}
+
+function buildPairedCameraItem(camera: ViewerPairedCamera): string {
+  return `
+        <article class="paired-camera-card">
+          <div>
+            <h2>${escapeHtml(camera.displayName)}</h2>
+            <p>Last connected ${formatLastConnected(camera.lastConnectedAt)}</p>
+            <p class="pair-status" data-pair-status="${escapeHtml(camera.pairId)}">Checking</p>
+          </div>
+          <div class="paired-camera-actions">
+            <button class="ghost-outline" type="button" data-reconnect-pair="${escapeHtml(camera.pairId)}">Reconnect</button>
+            <button class="text-danger" type="button" data-remove-pair="${escapeHtml(camera.pairId)}">Remove</button>
+          </div>
+        </article>
+  `;
+}
+
 function buildConnectionPicker(selectedMode: ConnectionMode): string {
   return `
       <section class="connection-picker" aria-label="Connection mode">
@@ -79,11 +112,13 @@ function buildConnectionPicker(selectedMode: ConnectionMode): string {
 
 function buildTabContent(
   selectedMode: ConnectionMode,
-  activeTab: HomeTab
+  activeTab: HomeTab,
+  pairedCameras: ViewerPairedCamera[]
 ): string {
   if (activeTab === "cameras") {
     return `
       ${buildHomeHeader("Cameras", "Choose how this phone participates.")}
+      ${buildPairedCameraList(pairedCameras)}
       ${buildActionCards()}
     `;
   }
@@ -111,12 +146,26 @@ export function parseHomeTab(value: string | null | undefined): HomeTab {
 
 export function buildHomeMarkup(
   selectedMode: ConnectionMode = "remote",
-  activeTab: HomeTab = "home"
+  activeTab: HomeTab = "home",
+  pairedCameras: ViewerPairedCamera[] = []
 ): string {
   return `
     <section class="app-shell home-shell">
-      ${buildTabContent(selectedMode, activeTab)}
+      ${buildTabContent(selectedMode, activeTab, pairedCameras)}
       ${buildBottomNav(activeTab)}
     </section>
   `;
+}
+
+function formatLastConnected(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "recently";
+  return "recently";
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }

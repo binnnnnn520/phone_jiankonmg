@@ -1,5 +1,7 @@
 import "./styles.css";
 import type { ConnectionMode } from "@phone-monitor/shared";
+import type { ViewerPairedCamera } from "@phone-monitor/shared";
+import { getPairStatus } from "./api.js";
 import { renderCamera } from "./camera.js";
 import {
   browserConnectionModeStorage,
@@ -7,7 +9,13 @@ import {
   resolvePreferredConnectionMode,
   storeConnectionMode
 } from "./connection-mode.js";
+import { loadClientConfig } from "./config.js";
 import { buildHomeMarkup, parseHomeTab, type HomeTab } from "./home.js";
+import {
+  browserPairStorage,
+  clearPairedCamera,
+  readPairedCameras
+} from "./paired-cameras.js";
 import { resolveRoute } from "./routes.js";
 import { renderViewer } from "./viewer.js";
 
@@ -33,6 +41,14 @@ function routeWithConnectionMode(mode: "camera" | "viewer"): string {
   }).toString()}`;
 }
 
+function routeWithPairReconnect(pairId: string): string {
+  return `/?${new URLSearchParams({
+    mode: "viewer",
+    pair: pairId,
+    connection: selectedConnectionMode()
+  }).toString()}`;
+}
+
 function selectedHomeTab(): HomeTab {
   return parseHomeTab(new URLSearchParams(window.location.search).get("tab"));
 }
@@ -42,9 +58,36 @@ function routeWithHomeTab(tab: HomeTab): string {
   return `/?${new URLSearchParams({ tab }).toString()}`;
 }
 
+function refreshPairStatuses(pairedCameras: ViewerPairedCamera[]): void {
+  if (pairedCameras.length === 0) return;
+  const config = loadClientConfig();
+  for (const camera of pairedCameras) {
+    void getPairStatus(config, camera)
+      .then((status) => {
+        updatePairStatus(camera.pairId, status.status === "live" ? "Live" : "Offline");
+      })
+      .catch(() => {
+        updatePairStatus(camera.pairId, "Offline");
+      });
+  }
+}
+
+function updatePairStatus(pairId: string, label: string): void {
+  const status = Array.from(
+    appRoot.querySelectorAll<HTMLElement>("[data-pair-status]")
+  ).find((element) => element.dataset.pairStatus === pairId);
+  if (status) status.textContent = label;
+}
+
 function renderHome(): void {
   const activeTab = selectedHomeTab();
-  appRoot.innerHTML = buildHomeMarkup(selectedConnectionMode(), activeTab);
+  const pairStorage = browserPairStorage();
+  const pairedCameras = readPairedCameras(pairStorage);
+  appRoot.innerHTML = buildHomeMarkup(
+    selectedConnectionMode(),
+    activeTab,
+    pairedCameras
+  );
   appRoot
     .querySelectorAll<HTMLButtonElement>("[data-connection-mode]")
     .forEach((button) => {
@@ -62,11 +105,28 @@ function renderHome(): void {
     });
   });
   appRoot
+    .querySelectorAll<HTMLButtonElement>("[data-reconnect-pair]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const pairId = button.dataset.reconnectPair;
+        if (pairId) navigate(routeWithPairReconnect(pairId));
+      });
+    });
+  appRoot.querySelectorAll<HTMLButtonElement>("[data-remove-pair]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const pairId = button.dataset.removePair;
+      if (!pairId) return;
+      clearPairedCamera(pairStorage, pairId);
+      renderHome();
+    });
+  });
+  appRoot
     .querySelector("#camera")
     ?.addEventListener("click", () => navigate(routeWithConnectionMode("camera")));
   appRoot
     .querySelector("#viewer")
     ?.addEventListener("click", () => navigate(routeWithConnectionMode("viewer")));
+  if (activeTab === "cameras") refreshPairStatuses(pairedCameras);
 }
 
 function renderApp(): void {

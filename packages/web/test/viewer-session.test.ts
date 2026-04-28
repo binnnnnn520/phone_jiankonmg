@@ -4,7 +4,8 @@ import type { SignalingMessage, UserFacingConnectionState } from "@phone-monitor
 import {
   extractRoomFromQrPayload,
   renderViewer,
-  startViewerSession
+  startViewerSession,
+  startViewerSessionWithToken
 } from "../src/viewer.js";
 import type { ClientConfig } from "../src/config.js";
 import type { SignalingClientLike } from "../src/signaling-client.js";
@@ -72,6 +73,17 @@ function createPeer(events: string[]): PeerController {
     close() {
       events.push("close-peer");
     }
+  };
+}
+
+function pairedCamera() {
+  return {
+    pairId: "pair-1",
+    cameraDeviceId: "camera-device-1",
+    viewerDeviceId: "viewer-device-1",
+    viewerPairToken: "viewer-pair-token",
+    displayName: "Paired camera",
+    lastConnectedAt: 1000
   };
 }
 
@@ -176,20 +188,25 @@ function withWindowSearch<T>(search: string, callback: () => T): T {
 
 test("startViewerSession verifies the PIN before signaling joins the room", async () => {
   const events: string[] = [];
+  const paired: unknown[] = [];
 
   await startViewerSession({
     config,
     roomId: "room-1",
     pin: "123456",
+    viewerDeviceId: "viewer-device-1",
     video: {} as HTMLVideoElement,
+    onPairedCamera: (camera) => paired.push(camera),
     onState: (state: UserFacingConnectionState) => events.push(`state:${state}`),
     deps: {
-      verifyPin: async () => {
+      verifyPin: async (_config, _roomId, _pin, _fetcher, pairing) => {
         events.push("verify-pin");
+        events.push(`viewer:${pairing?.viewerDeviceId}`);
         return {
           roomId: "room-1",
           viewerToken: "viewer-token",
-          iceServers: [{ urls: "stun:example.test" }]
+          iceServers: [{ urls: "stun:example.test" }],
+          pairedCamera: pairedCamera()
         };
       },
       createSignalingClient: () => createSignaling(events),
@@ -200,6 +217,33 @@ test("startViewerSession verifies the PIN before signaling joins the room", asyn
   assert.deepEqual(events, [
     "state:Checking PIN",
     "verify-pin",
+    "viewer:viewer-device-1",
+    "connect",
+    "create-peer",
+    "listen",
+    "send:join-viewer",
+    "state:Connecting"
+  ]);
+  assert.deepEqual(paired, [pairedCamera()]);
+});
+
+test("startViewerSessionWithToken joins signaling without verifying the PIN", async () => {
+  const events: string[] = [];
+
+  await startViewerSessionWithToken({
+    config,
+    roomId: "room-1",
+    viewerToken: "viewer-token",
+    iceServers: [{ urls: "stun:example.test" }],
+    video: {} as HTMLVideoElement,
+    onState: (state: UserFacingConnectionState) => events.push(`state:${state}`),
+    deps: {
+      createSignalingClient: () => createSignaling(events),
+      createPeer: () => createPeer(events)
+    }
+  });
+
+  assert.deepEqual(events, [
     "connect",
     "create-peer",
     "listen",
@@ -300,7 +344,8 @@ test("startViewerSession shows ended state and clears video on explicit session-
       verifyPin: async () => ({
         roomId: "room-1",
         viewerToken: "viewer-token",
-        iceServers: [{ urls: "stun:example.test" }]
+        iceServers: [{ urls: "stun:example.test" }],
+        pairedCamera: pairedCamera()
       }),
       createSignalingClient: () => signaling,
       createPeer: () => createPeer(events)
@@ -334,7 +379,8 @@ test("startViewerSession keeps peer-left as camera offline without clearing vide
       verifyPin: async () => ({
         roomId: "room-1",
         viewerToken: "viewer-token",
-        iceServers: [{ urls: "stun:example.test" }]
+        iceServers: [{ urls: "stun:example.test" }],
+        pairedCamera: pairedCamera()
       }),
       createSignalingClient: () => signaling,
       createPeer: () => createPeer(events)

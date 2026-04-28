@@ -13,4 +13,5 @@ test("falls back to sane defaults for invalid numeric environment values", () =>
   assert.equal(config.publicHttpUrl, "http://localhost:8787");
   assert.equal(config.roomTtlMs, 600000);
   assert.equal(config.pinMaxAttempts, 5);
+  assert.equal(config.pairStoreFile, "data/pairs.json");
 });

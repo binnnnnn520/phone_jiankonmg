@@ -1,4 +1,5 @@
 import type {
+  CreateRoomRequest,
   CreateRoomResponse,
   SignalingMessage
 } from "@phone-monitor/shared";
@@ -11,6 +12,13 @@ import {
   resolvePreferredConnectionMode
 } from "./connection-mode.js";
 import { loadClientConfig } from "./config.js";
+import {
+  browserPairStorage,
+  getOrCreateDeviceId,
+  readCameraPairing,
+  saveCameraPairing,
+  type StoredCameraPairing
+} from "./paired-cameras.js";
 import {
   describeCameraError,
   releaseWakeLock,
@@ -58,6 +66,25 @@ export function buildCameraJoinMessage(
     type: "join-camera",
     roomId: room.roomId,
     cameraToken: room.cameraToken
+  };
+}
+
+export function buildCreateRoomRequest(
+  deviceId: string,
+  pairing?: StoredCameraPairing
+): CreateRoomRequest {
+  if (pairing) {
+    return {
+      cameraDeviceId: pairing.cameraDeviceId,
+      displayName: pairing.displayName,
+      pairId: pairing.pairId,
+      cameraPairToken: pairing.cameraPairToken
+    };
+  }
+
+  return {
+    cameraDeviceId: deviceId,
+    displayName: "This phone camera"
   };
 }
 
@@ -148,6 +175,9 @@ export async function stopCameraSession(
 
 export async function renderCamera(app: HTMLElement): Promise<void> {
   const config = loadClientConfig();
+  const pairStorage = browserPairStorage();
+  const deviceId = getOrCreateDeviceId(pairStorage);
+  const cameraPairing = readCameraPairing(pairStorage);
   const preferredConnectionMode = resolvePreferredConnectionMode({
     params: new URLSearchParams(window.location.search),
     storage: browserConnectionModeStorage(),
@@ -175,7 +205,12 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
     });
     preview.srcObject = stream;
 
-    const room: CreateRoomResponse = await createRoom(runtimeConfig);
+    const room: CreateRoomResponse = await createRoom(
+      runtimeConfig,
+      fetch,
+      buildCreateRoomRequest(deviceId, cameraPairing)
+    );
+    saveCameraPairing(pairStorage, room.cameraPairing);
     const viewerUrl = buildViewerUrl(room.roomId, {
       origin: window.location.origin,
       connectionMode: connectionMode.mode,

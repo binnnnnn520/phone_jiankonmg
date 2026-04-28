@@ -46,6 +46,31 @@ test("home screen can render cameras and me tabs as active", () => {
   assert.match(meMarkup, /<h1>Me<\/h1>/);
 });
 
+test("cameras tab renders paired camera reconnect and remove actions", () => {
+  const markup = buildHomeMarkup("remote", "cameras", [
+    {
+      pairId: "pair-1",
+      cameraDeviceId: "camera-device-1",
+      viewerDeviceId: "viewer-device-1",
+      viewerPairToken: "viewer-pair-token",
+      displayName: "Front door",
+      lastConnectedAt: 1000
+    }
+  ]);
+
+  assert.match(markup, /Front door/);
+  assert.match(markup, /data-reconnect-pair="pair-1"/);
+  assert.match(markup, /data-remove-pair="pair-1"/);
+  assert.match(markup, /Reconnect/);
+});
+
+test("cameras tab renders an empty paired camera state", () => {
+  const markup = buildHomeMarkup("remote", "cameras", []);
+
+  assert.match(markup, /No paired cameras yet/);
+  assert.match(markup, /Pair once with QR and PIN/);
+});
+
 test("home screen does not expose infrastructure setup terms", () => {
   const markup = buildHomeMarkup().toLowerCase();
 

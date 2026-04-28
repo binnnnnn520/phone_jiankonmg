@@ -89,7 +89,9 @@ test("bottom navigation switches between home tabs", async ({ page }) => {
     "aria-current",
     "page"
   );
-  await expect(page.getByRole("heading", { name: "Cameras" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Cameras", exact: true })
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Me", exact: true }).click();
   await expect(page).toHaveURL(/tab=me/);
@@ -98,6 +100,32 @@ test("bottom navigation switches between home tabs", async ({ page }) => {
     "page"
   );
   await expect(page.getByRole("heading", { name: "Me" })).toBeVisible();
+});
+
+test("bottom navigation keeps a consistent size without excessive content gap", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 1200 });
+
+  const readLayoutBox = async (path: string, contentSelector: string) => {
+    await page.goto(path);
+    const nav = await page.locator(".bottom-nav").boundingBox();
+    const content = await page.locator(contentSelector).boundingBox();
+    expect(nav).not.toBeNull();
+    expect(content).not.toBeNull();
+    return { nav: nav!, content: content! };
+  };
+
+  const home = await readLayoutBox("/", ".home-note");
+  const cameras = await readLayoutBox("/?tab=cameras", ".home-actions");
+  const me = await readLayoutBox("/?tab=me", ".home-note");
+  const boxes = [home, cameras, me];
+  const baselineHeight = Math.round(home.nav.height);
+
+  for (const { nav, content } of boxes) {
+    const contentGap = Math.round(nav.y - (content.y + content.height));
+    expect(Math.round(nav.height)).toBe(baselineHeight);
+    expect(contentGap).toBeGreaterThanOrEqual(0);
+    expect(contentGap).toBeLessThanOrEqual(48);
+  }
 });
 
 test("viewer room links prefill the room before PIN entry", async ({ page }) => {
@@ -156,5 +184,57 @@ test("camera and viewer pair over local signaling", async ({ page }) => {
       .toMatch(/^true:[1-4]$/);
   } finally {
     await viewer.close();
+  }
+});
+
+test("paired camera can reconnect from Cameras tab without entering PIN again", async ({ page }) => {
+  const viewer = await page.context().newPage();
+  const dashboard = await page.context().newPage();
+  const roomResponsePromise = page.waitForResponse((response) => {
+    return (
+      response.url().endsWith("/rooms") &&
+      response.request().method() === "POST"
+    );
+  });
+
+  try {
+    await page.goto("/?mode=camera");
+    const roomResponse = await roomResponsePromise;
+    const room = (await roomResponse.json()) as {
+      pin: string;
+      roomId: string;
+    };
+    await expect(page.getByRole("status")).toHaveText(/waiting for a viewer/i);
+
+    await viewer.goto(`/?room=${encodeURIComponent(room.roomId)}`);
+    await viewer.getByLabel("PIN").fill(room.pin);
+    await viewer.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(viewer.getByRole("status")).toHaveText(
+      /connecting|live|using relay connection/i
+    );
+
+    await viewer.close();
+
+    await dashboard.goto("/?tab=cameras");
+    await expect(dashboard.getByText("This phone camera")).toBeVisible();
+    await expect(dashboard.getByText("Live")).toBeVisible();
+    await dashboard.getByRole("button", { name: "Reconnect" }).click();
+    await expect(dashboard).toHaveURL(/pair=/);
+    await expect(dashboard.getByRole("status")).toHaveText(
+      /connecting|live|using relay connection/i
+    );
+    await expect
+      .poll(
+        async () =>
+          dashboard.locator("#remote").evaluate((element) => {
+            const video = element as HTMLVideoElement;
+            return `${Boolean(video.srcObject)}:${video.readyState}`;
+          }),
+        { timeout: 15000 }
+      )
+      .toMatch(/^true:[1-4]$/);
+  } finally {
+    await dashboard.close().catch(() => undefined);
+    await viewer.close().catch(() => undefined);
   }
 });
