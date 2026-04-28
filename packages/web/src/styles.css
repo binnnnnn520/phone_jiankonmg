@@ -101,6 +101,10 @@ p {
   gap: 18px;
 }
 
+.app-shell.home-shell {
+  padding-bottom: 0;
+}
+
 .monitor-panel {
   display: grid;
   gap: 18px;
@@ -515,6 +519,7 @@ h1 {
   align-items: center;
   gap: 6px;
   min-height: 74px;
+  margin-top: auto;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;

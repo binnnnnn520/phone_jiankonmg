@@ -118,29 +118,34 @@ test("camera and viewer back buttons return to the home screen", async ({ page }
   ).toBeVisible();
 });
 
-test("bottom navigation keeps a consistent size without excessive content gap", async ({ page }) => {
-  await page.setViewportSize({ width: 768, height: 1200 });
+test("bottom navigation keeps a consistent bottom position and size", async ({ page }) => {
+  const viewports = [
+    { width: 320, height: 900 },
+    { width: 390, height: 900 },
+    { width: 768, height: 1200 }
+  ];
 
-  const readLayoutBox = async (path: string, contentSelector: string) => {
+  const readNavBox = async (path: string) => {
     await page.goto(path);
     const nav = await page.locator(".bottom-nav").boundingBox();
-    const content = await page.locator(contentSelector).boundingBox();
     expect(nav).not.toBeNull();
-    expect(content).not.toBeNull();
-    return { nav: nav!, content: content! };
+    return nav!;
   };
 
-  const home = await readLayoutBox("/", ".home-note");
-  const cameras = await readLayoutBox("/?tab=cameras", ".home-actions");
-  const me = await readLayoutBox("/?tab=me", ".home-note");
-  const boxes = [home, cameras, me];
-  const baselineHeight = Math.round(home.nav.height);
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    const boxes = [
+      await readNavBox("/"),
+      await readNavBox("/?tab=cameras"),
+      await readNavBox("/?tab=me")
+    ];
+    const baselineHeight = Math.round(boxes[0]!.height);
+    const baselineBottom = Math.round(boxes[0]!.y + boxes[0]!.height);
 
-  for (const { nav, content } of boxes) {
-    const contentGap = Math.round(nav.y - (content.y + content.height));
-    expect(Math.round(nav.height)).toBe(baselineHeight);
-    expect(contentGap).toBeGreaterThanOrEqual(0);
-    expect(contentGap).toBeLessThanOrEqual(48);
+    for (const nav of boxes) {
+      expect(Math.round(nav.height)).toBe(baselineHeight);
+      expect(Math.round(nav.y + nav.height)).toBe(baselineBottom);
+    }
   }
 });
 
