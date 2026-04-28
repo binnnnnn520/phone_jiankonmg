@@ -42,8 +42,15 @@ function buildHomeHeader(title: string, copy: string): string {
           <span class="brand-mark" aria-hidden="true"></span>
           <p class="eyebrow">Phone Monitor</p>
         </div>
-        <h1>${title}</h1>
-        <p class="home-copy">${copy}</p>
+        <div class="home-title-block">
+          <h1>${title}</h1>
+          <p class="home-copy">${copy}</p>
+        </div>
+        <div class="home-status-strip" aria-label="Monitoring summary">
+          <span><strong>Quick pair</strong><small>QR + PIN</small></span>
+          <span><strong>Live view</strong><small>Second phone</small></span>
+          <span><strong>Private</strong><small>Your devices</small></span>
+        </div>
       </header>
   `;
 }
@@ -51,14 +58,22 @@ function buildHomeHeader(title: string, copy: string): string {
 function buildActionCards(): string {
   return `
       <div class="home-actions">
-        <button class="action-card camera-card" id="camera" type="button">
+        <button class="action-card camera-card primary-action" id="camera" type="button">
           <span class="action-illustration camera-illustration" aria-hidden="true"></span>
-          <span class="action-label">Use this phone as camera</span>
+          <span class="action-text">
+            <span class="action-kicker">Camera phone</span>
+            <span class="action-label">Use this phone as camera</span>
+            <span class="action-detail">Shows QR and PIN for pairing.</span>
+          </span>
           <span class="action-arrow" aria-hidden="true">&rarr;</span>
         </button>
-        <button class="action-card viewer-card" id="viewer" type="button">
+        <button class="action-card viewer-card secondary-action" id="viewer" type="button">
           <span class="action-illustration viewer-illustration" aria-hidden="true"></span>
-          <span class="action-label">Watch a camera</span>
+          <span class="action-text">
+            <span class="action-kicker">Viewer phone</span>
+            <span class="action-label">Watch a camera</span>
+            <span class="action-detail">Scan QR or reconnect a saved camera.</span>
+          </span>
           <span class="action-arrow" aria-hidden="true">&rarr;</span>
         </button>
       </div>
@@ -150,7 +165,7 @@ export function buildHomeMarkup(
   pairedCameras: ViewerPairedCamera[] = []
 ): string {
   return `
-    <section class="app-shell home-shell">
+    <section class="app-shell home-shell light-monitor-shell">
       ${buildTabContent(selectedMode, activeTab, pairedCameras)}
       ${buildBottomNav(activeTab)}
     </section>

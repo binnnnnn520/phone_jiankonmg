@@ -126,6 +126,7 @@ export async function startViewerSessionWithToken(
     onState: params.onState,
     onRemoteStream: (stream) => {
       params.video.srcObject = stream;
+      setRemoteVideoActive(params.video, true);
     }
   });
 
@@ -138,6 +139,7 @@ export async function startViewerSessionWithToken(
       params.onState,
       () => {
         params.video.srcObject = null;
+        setRemoteVideoActive(params.video, false);
       }
     );
   });
@@ -153,9 +155,23 @@ export async function startViewerSessionWithToken(
     disconnect: () => {
       controller.close();
       signaling.close();
+      params.video.srcObject = null;
+      setRemoteVideoActive(params.video, false);
       params.onState("Session ended");
     }
   };
+}
+
+function setRemoteVideoActive(video: HTMLVideoElement, active: boolean): void {
+  const dataset = (video as HTMLVideoElement & { dataset?: DOMStringMap }).dataset;
+  if (!dataset) return;
+
+  if (active) {
+    dataset.streamState = "live";
+    return;
+  }
+
+  delete dataset.streamState;
 }
 
 function handleViewerSignal(
@@ -294,7 +310,7 @@ export function renderViewer(app: HTMLElement): void {
   const connectionMode = chooseConnectionMode(runtimeConfig);
 
   const section = doc.createElement("section");
-  section.className = "app-shell monitor-panel viewer-screen";
+  section.className = "app-shell monitor-panel viewer-screen light-monitor-shell";
 
   const header = doc.createElement("header");
   header.className = "top-bar";
@@ -302,14 +318,20 @@ export function renderViewer(app: HTMLElement): void {
   back.className = "icon-button ghost-button";
   back.type = "button";
   back.setAttribute("aria-label", "Back");
+  const titleBlock = doc.createElement("div");
+  titleBlock.className = "top-title-block";
+  const kicker = doc.createElement("p");
+  kicker.className = "screen-kicker";
+  kicker.textContent = "Viewer station";
   const heading = doc.createElement("h1");
   heading.className = "top-title";
   heading.textContent = "Phone Monitor";
+  titleBlock.append(kicker, heading);
   const mode = doc.createElement("p");
   mode.className = "mode-pill";
   mode.id = "connection-mode";
   mode.textContent = connectionMode.label;
-  header.append(back, heading, mode);
+  header.append(back, titleBlock, mode);
 
   const videoWrap = doc.createElement("div");
   videoWrap.className = "video-frame viewer-video-frame";
@@ -355,6 +377,7 @@ export function renderViewer(app: HTMLElement): void {
   form.id = "viewer-form";
 
   const roomLabel = doc.createElement("label");
+  roomLabel.className = "field-label";
   const roomInput = doc.createElement("input");
   roomInput.id = "room";
   roomInput.autocomplete = "off";
@@ -362,6 +385,7 @@ export function renderViewer(app: HTMLElement): void {
   roomLabel.append("Room ", roomInput);
 
   const pinLabel = doc.createElement("label");
+  pinLabel.className = "field-label";
   const pinInput = doc.createElement("input");
   pinInput.id = "pin";
   pinInput.autocomplete = "one-time-code";

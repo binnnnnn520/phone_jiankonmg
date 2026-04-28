@@ -12,6 +12,14 @@ test("home screen presents the two-phone approved UI copy", () => {
   assert.match(markup, /Remote/);
 });
 
+test("home screen exposes the light dashboard structure", () => {
+  const markup = buildHomeMarkup();
+
+  assert.match(markup, /class="app-shell home-shell light-monitor-shell"/);
+  assert.match(markup, /class="home-status-strip"/);
+  assert.match(markup, /class="action-card camera-card primary-action"/);
+});
+
 test("home screen marks remote as the current implemented connection mode", () => {
   const markup = buildHomeMarkup();
 

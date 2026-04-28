@@ -85,6 +85,7 @@ test("buildCameraShellMarkup shows the approved same Wi-Fi mode copy", async () 
   assert.match(markup, /Phone Monitor/);
   assert.match(markup, /PIN/);
   assert.match(markup, /Same Wi-Fi/);
+  assert.match(markup, /class="pairing-command-center"/);
   assert.doesNotMatch(markup.toLowerCase(), /server|signaling|turn|nat|deploy/);
 });
 

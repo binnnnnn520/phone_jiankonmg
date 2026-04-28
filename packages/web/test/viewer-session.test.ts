@@ -296,6 +296,7 @@ test("renderViewer shows the remote connection mode label by default", () => {
     renderViewer(app as unknown as HTMLElement);
   });
 
+  assert.match(app.children[0]?.className ?? "", /light-monitor-shell/);
   assert.equal(app.querySelector("#connection-mode")?.textContent, "Remote");
 });
 
@@ -391,4 +392,44 @@ test("startViewerSession keeps peer-left as camera offline without clearing vide
 
   assert.equal(states.at(-1), "Camera offline");
   assert.equal(video.srcObject, stream);
+});
+
+test("startViewerSession marks remote video active only while connected", async () => {
+  const events: string[] = [];
+  const states: UserFacingConnectionState[] = [];
+  const remoteStream = {} as MediaStream;
+  const video = {
+    dataset: {},
+    srcObject: null
+  } as unknown as HTMLVideoElement;
+
+  const session = await startViewerSession({
+    config,
+    roomId: "room-1",
+    pin: "123456",
+    video,
+    onState: (state) => states.push(state),
+    deps: {
+      verifyPin: async () => ({
+        roomId: "room-1",
+        viewerToken: "viewer-token",
+        iceServers: [{ urls: "stun:example.test" }],
+        pairedCamera: pairedCamera()
+      }),
+      createSignalingClient: () => createSignaling(events),
+      createPeer: (params) => {
+        params.onRemoteStream?.(remoteStream);
+        return createPeer(events);
+      }
+    }
+  });
+
+  assert.equal(video.srcObject, remoteStream);
+  assert.equal(video.dataset.streamState, "live");
+
+  session.disconnect();
+
+  assert.equal(video.srcObject, null);
+  assert.equal(video.dataset.streamState, undefined);
+  assert.equal(states.at(-1), "Session ended");
 });

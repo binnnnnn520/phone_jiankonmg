@@ -90,10 +90,13 @@ export function buildCreateRoomRequest(
 
 export function buildCameraShellMarkup(connectionLabel: string): string {
   return `
-    <section class="app-shell monitor-panel camera-screen">
+    <section class="app-shell monitor-panel camera-screen light-monitor-shell">
       <header class="top-bar">
         <button class="icon-button ghost-button" type="button" aria-label="Back"></button>
-        <h1 class="top-title">Phone Monitor</h1>
+        <div class="top-title-block">
+          <p class="screen-kicker">Camera station</p>
+          <h1 class="top-title">Phone Monitor</h1>
+        </div>
         <p class="live-indicator"><span aria-hidden="true"></span>Live</p>
       </header>
 
@@ -102,13 +105,17 @@ export function buildCameraShellMarkup(connectionLabel: string): string {
         <span class="video-badge"><span aria-hidden="true"></span>Live</span>
       </div>
 
-      <p class="pairing-instruction">Scan the QR code or enter the PIN on the other phone.</p>
-
-      <div class="pairing-card">
-        <canvas id="qr" aria-label="Viewer QR code"></canvas>
-        <div class="pin-panel">
-          <p class="label">PIN</p>
-          <p class="pin" id="pin">------</p>
+      <div class="pairing-command-center">
+        <p class="pairing-instruction">Scan the QR code or enter the PIN on the other phone.</p>
+        <div class="pairing-card">
+          <div class="qr-panel">
+            <p class="label">QR</p>
+            <canvas id="qr" aria-label="Viewer QR code"></canvas>
+          </div>
+          <div class="pin-panel">
+            <p class="label">PIN</p>
+            <p class="pin" id="pin">------</p>
+          </div>
         </div>
       </div>
 
