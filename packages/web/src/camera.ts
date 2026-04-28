@@ -44,6 +44,10 @@ export interface StopCameraSessionParams {
   roomId: string;
 }
 
+export interface RenderCameraOptions {
+  onBack?: () => void;
+}
+
 export function buildViewerUrl(
   roomId: string,
   options: BuildViewerUrlOptions
@@ -92,7 +96,7 @@ export function buildCameraShellMarkup(connectionLabel: string): string {
   return `
     <section class="app-shell monitor-panel camera-screen light-monitor-shell">
       <header class="top-bar">
-        <button class="icon-button ghost-button" type="button" aria-label="Back"></button>
+        <button class="icon-button ghost-button" type="button" aria-label="Back" data-nav-back></button>
         <div class="top-title-block">
           <p class="screen-kicker">Camera station</p>
           <h1 class="top-title">Phone Monitor</h1>
@@ -180,7 +184,10 @@ export async function stopCameraSession(
   await releaseWakeLock(params.wakeLock);
 }
 
-export async function renderCamera(app: HTMLElement): Promise<void> {
+export async function renderCamera(
+  app: HTMLElement,
+  options: RenderCameraOptions = {}
+): Promise<void> {
   const config = loadClientConfig();
   const pairStorage = browserPairStorage();
   const deviceId = getOrCreateDeviceId(pairStorage);
@@ -199,17 +206,70 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
   const qr = app.querySelector<HTMLCanvasElement>("#qr")!;
   const pin = app.querySelector<HTMLParagraphElement>("#pin")!;
   const stop = app.querySelector<HTMLButtonElement>("#stop")!;
+  const back = app.querySelector<HTMLButtonElement>("[data-nav-back]")!;
 
   let stream: MediaStream | undefined;
   let signaling: SignalingClient | undefined;
   let wakeLock: WakeLockSentinelLike | undefined;
+  let peerController: PeerController | undefined;
+  let roomId = "";
+  let closed = false;
+
+  async function cleanupCameraSession(): Promise<void> {
+    const currentPeerController = peerController;
+    const currentRoomId = roomId;
+    const currentSignaling = signaling;
+    const currentStream = stream;
+    const currentWakeLock = wakeLock;
+
+    peerController = undefined;
+    roomId = "";
+    signaling = undefined;
+    stream = undefined;
+    wakeLock = undefined;
+
+    if (currentPeerController && currentRoomId) {
+      await stopCameraSession({
+        peerController: currentPeerController,
+        roomId: currentRoomId,
+        ...(currentSignaling ? { signaling: currentSignaling } : {}),
+        ...(currentStream ? { stream: currentStream } : {}),
+        ...(currentWakeLock ? { wakeLock: currentWakeLock } : {})
+      });
+      return;
+    }
+
+    currentSignaling?.close();
+    if (currentStream) stopStream(currentStream);
+    await releaseWakeLock(currentWakeLock);
+  }
+
+  async function closeCameraSession(): Promise<void> {
+    if (closed) return;
+    closed = true;
+    await cleanupCameraSession();
+  }
+
+  async function stopIfClosed(): Promise<boolean> {
+    if (!closed) return false;
+    await cleanupCameraSession();
+    return true;
+  }
+
+  back.addEventListener("click", () => {
+    void closeCameraSession().finally(() => {
+      options.onBack?.();
+    });
+  });
 
   try {
     wakeLock = await requestWakeLock();
+    if (await stopIfClosed()) return;
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment" },
       audio: false
     });
+    if (await stopIfClosed()) return;
     preview.srcObject = stream;
 
     const room: CreateRoomResponse = await createRoom(
@@ -217,6 +277,7 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
       fetch,
       buildCreateRoomRequest(deviceId, cameraPairing)
     );
+    if (await stopIfClosed()) return;
     saveCameraPairing(pairStorage, room.cameraPairing);
     const viewerUrl = buildViewerUrl(room.roomId, {
       origin: window.location.origin,
@@ -226,14 +287,17 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
         : {})
     });
     await QRCode.toCanvas(qr, viewerUrl, { width: 180, margin: 1 });
+    if (await stopIfClosed()) return;
     pin.textContent = room.pin;
     status.textContent = "Camera is visible and waiting for a viewer.";
 
     signaling = new SignalingClient(runtimeConfig.wsUrl);
     await signaling.connect();
+    if (await stopIfClosed()) return;
     signaling.send(buildCameraJoinMessage(room));
 
-    const peerController = createPeer({
+    roomId = room.roomId;
+    const activePeerController = createPeer({
       iceServers: room.iceServers,
       signaling,
       roomId: room.roomId,
@@ -241,15 +305,18 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
         status.textContent = state;
       }
     });
+    peerController = activePeerController;
+
+    if (await stopIfClosed()) return;
 
     for (const track of stream.getTracks()) {
-      peerController.peer.addTrack(track, stream);
+      activePeerController.peer.addTrack(track, stream);
     }
 
     signaling.onMessage((message) => {
       if (message.type === "join-viewer") {
-        void peerController.peer.createOffer().then(async (offer) => {
-          await peerController.peer.setLocalDescription(offer);
+        void activePeerController.peer.createOffer().then(async (offer) => {
+          await activePeerController.peer.setLocalDescription(offer);
           signaling?.send({ type: "offer", roomId: room.roomId, sdp: offer });
         });
       }
@@ -263,17 +330,12 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
 
     stop.addEventListener("click", () => {
       stop.disabled = true;
-      void stopCameraSession({
-        peerController,
-        roomId: room.roomId,
-        ...(signaling ? { signaling } : {}),
-        ...(stream ? { stream } : {}),
-        ...(wakeLock ? { wakeLock } : {})
-      }).finally(() => {
+      void closeCameraSession().finally(() => {
         status.textContent = "Session ended";
       });
     });
   } catch (error) {
+    if (closed) return;
     await handleCameraStartupFailure({
       error,
       status,

@@ -132,11 +132,11 @@ function renderHome(): void {
 function renderApp(): void {
   const route = resolveRoute(new URLSearchParams(window.location.search));
   if (route === "camera") {
-    void renderCamera(appRoot);
+    void renderCamera(appRoot, { onBack: () => navigate("/") });
     return;
   }
   if (route === "viewer") {
-    renderViewer(appRoot);
+    renderViewer(appRoot, { onBack: () => navigate("/") });
     return;
   }
   renderHome();

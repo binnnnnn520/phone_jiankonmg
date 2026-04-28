@@ -102,6 +102,22 @@ test("bottom navigation switches between home tabs", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Me" })).toBeVisible();
 });
 
+test("camera and viewer back buttons return to the home screen", async ({ page }) => {
+  await page.goto("/?mode=camera");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    page.getByRole("heading", { name: "Two phones, live view" })
+  ).toBeVisible();
+
+  await page.goto("/?mode=viewer");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    page.getByRole("heading", { name: "Two phones, live view" })
+  ).toBeVisible();
+});
+
 test("bottom navigation keeps a consistent size without excessive content gap", async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 1200 });
 

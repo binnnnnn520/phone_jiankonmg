@@ -55,6 +55,10 @@ export interface ViewerSession {
   disconnect: () => void;
 }
 
+export interface RenderViewerOptions {
+  onBack?: () => void;
+}
+
 export interface StartViewerSessionParams {
   config: ClientConfig;
   roomId: string;
@@ -293,7 +297,10 @@ async function scanQrIntoRoom(params: {
   }
 }
 
-export function renderViewer(app: HTMLElement): void {
+export function renderViewer(
+  app: HTMLElement,
+  options: RenderViewerOptions = {}
+): void {
   const params = new URLSearchParams(window.location.search);
   const initialRoom = params.get("room") ?? "";
   const reconnectPairId = params.get("pair") ?? "";
@@ -318,6 +325,7 @@ export function renderViewer(app: HTMLElement): void {
   back.className = "icon-button ghost-button";
   back.type = "button";
   back.setAttribute("aria-label", "Back");
+  back.setAttribute("data-nav-back", "");
   const titleBlock = doc.createElement("div");
   titleBlock.className = "top-title-block";
   const kicker = doc.createElement("p");
@@ -408,6 +416,12 @@ export function renderViewer(app: HTMLElement): void {
   section.append(header, videoWrap, status, scan, scannerPanel, form, disconnect);
   app.replaceChildren(section);
   let session: ViewerSession | undefined;
+
+  back.addEventListener("click", () => {
+    session?.disconnect();
+    session = undefined;
+    options.onBack?.();
+  });
 
   async function reconnectFromStoredPair(pairId: string): Promise<void> {
     const pairedCamera = readPairedCameras(pairStorage).find(
