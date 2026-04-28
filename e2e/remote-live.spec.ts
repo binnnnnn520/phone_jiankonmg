@@ -217,8 +217,8 @@ test("paired camera can reconnect from Cameras tab without entering PIN again", 
 
     await dashboard.goto("/?tab=cameras");
     await expect(dashboard.getByText("This phone camera")).toBeVisible();
-    await expect(dashboard.getByText("Live")).toBeVisible();
-    await dashboard.getByRole("button", { name: "Reconnect" }).click();
+    await expect(dashboard.locator(".pair-status")).toHaveText("Live");
+    await dashboard.getByRole("button", { name: "Reconnect", exact: true }).click();
     await expect(dashboard).toHaveURL(/pair=/);
     await expect(dashboard.getByRole("status")).toHaveText(
       /connecting|live|using relay connection/i

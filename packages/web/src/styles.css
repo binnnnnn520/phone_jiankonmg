@@ -515,7 +515,6 @@ h1 {
   align-items: center;
   gap: 6px;
   min-height: 74px;
-  margin-top: auto;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
