@@ -254,3 +254,47 @@ test("paired camera can reconnect from Cameras tab without entering PIN again", 
     await viewer.close().catch(() => undefined);
   }
 });
+
+test("stopped paired camera reconnect shows offline feedback", async ({ page }) => {
+  const viewer = await page.context().newPage();
+  const roomResponsePromise = page.waitForResponse((response) => {
+    return (
+      response.url().endsWith("/rooms") &&
+      response.request().method() === "POST"
+    );
+  });
+
+  try {
+    await page.goto("/?mode=camera");
+    const roomResponse = await roomResponsePromise;
+    const room = (await roomResponse.json()) as {
+      pin: string;
+      roomId: string;
+    };
+    await expect(page.getByRole("status")).toHaveText(/waiting for a viewer/i);
+
+    await viewer.goto(`/?room=${encodeURIComponent(room.roomId)}`);
+    await viewer.getByLabel("PIN").fill(room.pin);
+    await viewer.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(viewer.getByRole("status")).toHaveText(
+      /connecting|live|using relay connection/i
+    );
+
+    await page.getByRole("button", { name: "Stop" }).click();
+    await expect(viewer.getByRole("status")).toHaveText(
+      /camera offline|session ended/i
+    );
+
+    await viewer.goto("/?tab=cameras");
+    await expect(viewer.getByText("This phone camera")).toBeVisible();
+    await expect(viewer.locator(".pair-status")).toHaveText("Offline");
+    await viewer.getByRole("button", { name: "Reconnect", exact: true }).click();
+
+    await expect(viewer).toHaveURL(/pair=/);
+    await expect(viewer.getByRole("status")).toHaveText(
+      "Camera is offline. Start monitoring on the camera phone, then try again."
+    );
+  } finally {
+    await viewer.close().catch(() => undefined);
+  }
+});

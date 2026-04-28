@@ -224,6 +224,20 @@ export function extractRoomFromQrPayload(payload: string): string {
   }
 }
 
+function describeReconnectError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message === "PAIR_CAMERA_OFFLINE") {
+    return "Camera is offline. Start monitoring on the camera phone, then try again.";
+  }
+  if (message === "PAIR_REJECTED") {
+    return "Pair this camera again with QR and PIN.";
+  }
+  if (message === "VIEWER_ALREADY_CONNECTED") {
+    return "Another viewer is already connected to this camera.";
+  }
+  return message || "Could not reconnect";
+}
+
 async function scanQrIntoRoom(params: {
   panel: HTMLElement;
   video: HTMLVideoElement;
@@ -494,7 +508,7 @@ export function renderViewer(
 
   if (reconnectPairId) {
     void reconnectFromStoredPair(reconnectPairId).catch((error) => {
-      status.textContent = error instanceof Error ? error.message : "Could not reconnect";
+      status.textContent = describeReconnectError(error);
     });
   }
 }
