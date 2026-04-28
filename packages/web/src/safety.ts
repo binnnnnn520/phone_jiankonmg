@@ -43,7 +43,7 @@ export function describeCameraError(
 ): string {
   if (error instanceof DOMException && error.name === "NotAllowedError") {
     if (!isSecureContext) {
-      return "Camera access requires HTTPS or localhost. Open this page on localhost for desktop testing, or deploy it over HTTPS for phones.";
+      return "Camera access requires a secure HTTPS link or localhost. Open a secure link and try again.";
     }
     return "Camera permission was denied. Allow camera access and start monitoring again.";
   }
@@ -51,7 +51,7 @@ export function describeCameraError(
     return "No camera was found on this device.";
   }
   if (cameraStarted) {
-    return "Camera started, but the signaling server could not be reached. Start the signaling server and reload this camera page.";
+    return "Camera started, but the remote connection is not available. Check the connection and reload this camera page.";
   }
   return "The camera could not start. Close other camera apps and try again.";
 }

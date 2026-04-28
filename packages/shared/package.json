@@ -12,11 +12,15 @@
     "./state": {
       "types": "./dist/src/state.d.ts",
       "import": "./dist/src/state.js"
+    },
+    "./connection-mode": {
+      "types": "./dist/src/connection-mode.d.ts",
+      "import": "./dist/src/connection-mode.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node dist/test/deployment.test.js && node dist/test/pairing.test.js && node dist/test/state.test.js",
+    "test": "node dist/test/connection-mode.test.js && node dist/test/deployment.test.js && node dist/test/pairing.test.js && node dist/test/state.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {}

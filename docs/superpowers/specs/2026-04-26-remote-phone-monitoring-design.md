@@ -4,14 +4,16 @@ Date: 2026-04-26
 
 ## Summary
 
-Build a staged monitoring product that lets a user turn an idle phone into a remote live camera without buying dedicated monitoring hardware.
+Build a staged monitoring product that lets a user turn an idle phone into a remote live camera without buying dedicated monitoring hardware or managing server infrastructure.
 
-Version 1 is a browser/PWA prototype focused on a real remote viewing loop: an old phone runs the Camera PWA in the foreground with the screen on, another device runs the Viewer PWA, and the user can watch live video from outside the home network. Version 1 uses cloud signaling plus STUN/TURN so ordinary users do not need to understand local networking. Phase 2 replaces the camera side with an Android native app to support background or lock-screen reliability.
+Version 1 is a browser/PWA prototype focused on a two-phone user experience: an old phone runs the Camera PWA in the foreground with the screen on, another phone runs the Viewer PWA, and the user pairs them by scanning a QR code and entering a PIN. The product should prefer the simplest connection path available: local same-Wi-Fi connection when both phones are nearby, and hosted cloud signaling plus STUN/TURN when the viewer is outside the home network. Users should not be asked to deploy, configure, or understand a server. Phase 2 replaces the camera side with an Android native app to support background or lock-screen reliability.
 
 ## Product Goals
 
 - Let ordinary home users reuse an idle phone as a live monitoring camera.
+- Make the product feel usable with only two phones: one camera phone and one viewer phone.
 - Support remote live viewing when the viewer is outside the home network.
+- Avoid user-managed servers, port forwarding, router configuration, or command-line setup.
 - Keep the first version small enough to validate the core value quickly.
 - Make privacy boundaries explicit: no hidden recording, no cloud video storage, and visible camera-side monitoring status.
 - Preserve a clean path to later Android native capture, local recording, motion detection, and alerts.
@@ -21,12 +23,30 @@ Version 1 is a browser/PWA prototype focused on a real remote viewing loop: an o
 - No browser background or lock-screen camera capture.
 - No cloud recording, screenshots, or playback timeline.
 - No old-phone local recording in Version 1.
+- No requirement that ordinary users deploy or administer a signaling, TURN, or media server.
+- No advanced router setup, port forwarding, static IP, or DDNS requirement for ordinary users.
 - No motion detection, push alerts, device list, user account system, or multi-viewer broadcasting.
 - No guarantee that monitoring continues if the camera phone sleeps, closes the browser, loses power, or loses network.
 
 ## Target User and Scenario
 
-The first target is a general household user who wants to check a room, pet, doorway, or sleeping child while away from home. The camera phone is expected to stay plugged in, on Wi-Fi, with the Camera PWA open in the foreground and the screen kept awake. The viewer may be on mobile data or another external network.
+The first target is a general household user who wants to check a room, pet, doorway, or sleeping child using only two phones. The camera phone is expected to stay plugged in, on Wi-Fi, with the Camera PWA open in the foreground and the screen kept awake. The viewer may be on the same Wi-Fi for nearby checking, or on mobile data or another external network for remote viewing.
+
+## Connection Strategy
+
+Version 1 should present a simple two-phone pairing flow while the app chooses the connection path behind the scenes.
+
+### Same-Wi-Fi Mode
+
+When both phones are on the same local network, the app should prefer a local connection path. The target behavior is QR plus PIN pairing, local peer connection negotiation, and direct WebRTC media without depending on a user-managed server. If browser or network limits prevent fully local signaling in the PWA, the product may still use the hosted signaling service for coordination while clearly treating it as product infrastructure, not user setup.
+
+### Remote Mode
+
+When the viewer is away from the camera phone's local network, the app uses hosted signaling plus STUN/TURN. The hosted service creates rooms, validates PIN attempts, exchanges WebRTC offer/answer and ICE candidates, and returns ICE server configuration. Media still prefers direct WebRTC peer-to-peer transport; TURN is only a fallback for restricted networks.
+
+### User-Facing Principle
+
+The UI should describe modes as "same Wi-Fi direct connection" and "remote connection" instead of "server", "signaling", "NAT", or "TURN". Operational infrastructure belongs to the product owner, not the ordinary user.
 
 ## Phased Approach
 
@@ -37,7 +57,8 @@ Version 1 includes:
 - Camera PWA running on the old phone.
 - Viewer PWA running on another phone or desktop browser.
 - QR-code pairing plus 4-6 digit PIN verification.
-- Cloud signaling for room creation, PIN verification, WebRTC offer/answer exchange, ICE candidate exchange, and short-lived connection state.
+- Same-Wi-Fi connection path for nearby two-phone use.
+- Hosted signaling for room creation, PIN verification, WebRTC offer/answer exchange, ICE candidate exchange, and short-lived connection state when remote connectivity is needed.
 - STUN/TURN configuration so WebRTC can connect remotely, using TURN relay when direct peer-to-peer connection fails.
 - Clear connection, permission, and session-state UI.
 
@@ -61,12 +82,12 @@ Local phone storage is preferred because it lowers cloud storage cost, improves 
 
 1. The user opens the Camera PWA on the old phone.
 2. The Camera PWA requests camera permission and starts a visible camera preview.
-3. The Camera PWA creates a room through the signaling service.
-4. The service returns a room ID, QR payload, PIN, and ICE server configuration.
+3. The Camera PWA creates a pairing session and selects the best available connection path.
+4. For same-Wi-Fi use, the session prefers local/direct coordination where available; for remote use, the hosted signaling service returns a room ID, QR payload, PIN, and ICE server configuration.
 5. The old phone displays the QR code, PIN, and a visible monitoring status.
 6. The user opens the Viewer PWA on another device and scans the QR code or opens the room link.
 7. The viewer enters the PIN.
-8. The viewer and camera exchange WebRTC offer, answer, and ICE candidates through signaling.
+8. The viewer and camera exchange WebRTC offer, answer, and ICE candidates through the selected signaling path.
 9. WebRTC connects directly when possible. If direct connection fails, it falls back to TURN relay.
 10. The viewer sees the live video. Both sides show connection status and provide a stop/disconnect action.
 
@@ -78,7 +99,7 @@ Responsibilities:
 
 - Request and manage camera permission with `getUserMedia`.
 - Own the camera-side media stream lifecycle.
-- Create a room and display QR/PIN pairing information.
+- Create a pairing session and display QR/PIN pairing information.
 - Build and maintain the camera-side WebRTC peer connection.
 - Show visible status for camera active, viewer connected, reconnecting, and stopped.
 - Provide a clear stop-monitoring control.
@@ -93,7 +114,24 @@ Responsibilities:
 - Render the live video stream.
 - Show connection state, retry actions, and end-session controls.
 
-### Signaling API
+### Connection Mode Selector
+
+Responsibilities:
+
+- Determine whether the session is same-Wi-Fi/direct or remote.
+- Prefer direct local connectivity for nearby two-phone use.
+- Fall back to hosted signaling when local coordination is unavailable or the viewer is remote.
+- Expose user-facing labels without leaking low-level networking terms.
+
+### Local Connection Path
+
+Responsibilities:
+
+- Support nearby two-phone pairing on the same Wi-Fi where browser capabilities allow it.
+- Preserve QR plus PIN admission so local mode does not become an unauthenticated camera feed.
+- Keep media on WebRTC and avoid storing video.
+
+### Hosted Signaling API
 
 Responsibilities:
 
@@ -103,7 +141,9 @@ Responsibilities:
 - Track coarse session state such as waiting, connecting, live, reconnecting, and ended.
 - Expire inactive rooms and remove stale session state.
 
-The signaling service may temporarily store:
+The hosted signaling service is product infrastructure. Ordinary users should not deploy or configure it.
+
+The hosted signaling service may temporarily store:
 
 - Room ID and expiry.
 - Hashed PIN or short-lived PIN verification state.
@@ -141,9 +181,13 @@ Handles QR payload generation, PIN verification, room expiry, retry limits, and 
 
 Handles room entry, PIN submission, video playback, reconnect actions, and viewer-side disconnect.
 
+### Connection Mode
+
+Chooses same-Wi-Fi/direct versus remote/hosted signaling behavior, reports a plain-language mode label, and falls back safely when the preferred path fails.
+
 ### Signaling
 
-Handles the realtime message channel for room events, WebRTC offer/answer, ICE candidates, session end, and stale connection cleanup.
+Handles the realtime message channel for room events, WebRTC offer/answer, ICE candidates, session end, and stale connection cleanup. In remote mode, this uses the hosted signaling service. In same-Wi-Fi mode, it should use local coordination where practical, with hosted signaling as an acceptable PWA fallback.
 
 ### Connectivity
 
@@ -160,6 +204,7 @@ Version 1 must handle these user-facing cases:
 - Camera permission denied.
 - Camera device unavailable or already in use.
 - Browser unsupported or production page not served over HTTPS.
+- Same-Wi-Fi direct connection unavailable, with fallback to remote connection.
 - QR code or room expired.
 - Wrong PIN, too many PIN attempts, or room not found.
 - Viewer tries to join when another viewer is already connected.
@@ -168,7 +213,7 @@ Version 1 must handle these user-facing cases:
 - Camera page is closed, phone sleeps, network drops, or camera stream stops.
 - Viewer network drops and reconnects.
 
-States shown to users should be plain language, not low-level WebRTC terms. Suggested state names: waiting for viewer, connecting, live, reconnecting, using relay connection, camera offline, session ended, and retry needed.
+States shown to users should be plain language, not low-level WebRTC terms. Suggested state names: waiting for viewer, checking same Wi-Fi, connecting nearby, connecting remotely, live, reconnecting, using relay connection, camera offline, session ended, and retry needed.
 
 ## Safety and Privacy Boundaries
 
@@ -179,6 +224,12 @@ States shown to users should be plain language, not low-level WebRTC terms. Sugg
 - Version 1 should not support hidden monitoring.
 - Version 1 should not record or upload video.
 - Production camera access requires HTTPS.
+- Same-Wi-Fi mode and remote mode must use the same QR plus PIN admission model.
+- The UI must not imply that users need to run their own server.
+
+## Frontend UI Design Gate
+
+Before implementing a major UI redesign, generate a raster UI design mockup with the image generation workflow and get user approval. After approval, implement the frontend to closely match the accepted mockup using repo-native HTML/CSS/TypeScript. The generated image is a design reference, not a runtime dependency, unless the user explicitly asks to use it as an asset.
 
 ## Testing and Acceptance Criteria
 
@@ -186,6 +237,7 @@ Version 1 is accepted when these checks pass:
 
 - Camera PWA can request camera permission, create a room, and display QR plus PIN.
 - Viewer PWA can scan/open the room, submit PIN, and view live video.
+- Same-Wi-Fi two-phone validation works with the local/direct path or clearly falls back to hosted signaling without user setup.
 - The old phone on home Wi-Fi can be watched from a viewer on mobile data.
 - Direct WebRTC connection works where the network allows it.
 - TURN fallback works when direct connection is blocked or unavailable.
@@ -198,16 +250,20 @@ Version 1 is accepted when these checks pass:
 - PWA camera capture is not reliable for background or lock-screen monitoring. This is intentionally deferred to Android native Phase 2.
 - TURN relay can become expensive if many users stream for long periods. Version 1 needs operational visibility into relay usage.
 - Old phones may overheat, sleep, throttle, or lose Wi-Fi during all-day use. Version 1 should communicate the foreground/screen-on requirement clearly.
+- Browser limitations may prevent a completely serverless same-Wi-Fi PWA flow on some devices. The product should still avoid asking users to manage a server and should fall back to hosted signaling when needed.
 - Browser support for camera, wake lock, QR scanning, and autoplay can vary by device and browser.
 - TURN relay cost and privacy controls are tracked in `docs/operations/turn-and-signaling.md`.
 
 ## Approved Decisions
 
 - Use the staged route: PWA first, Android native camera app later.
+- Optimize the user experience for two phones and no user-managed infrastructure.
+- Add a same-Wi-Fi mode before treating remote cloud signaling as the only pairing path.
 - Version 1 supports remote viewing, not only same-Wi-Fi viewing.
-- Include TURN fallback in Version 1 to make remote viewing usable for ordinary users.
+- Include hosted signaling and TURN fallback in Version 1 to make remote viewing usable for ordinary users.
 - Use QR pairing plus PIN verification.
 - Use WebRTC for live video.
+- Generate UI design mockups first for major frontend changes, then implement only after user approval.
 - Limit Version 1 to one viewer per camera session.
 - Do not record in Version 1.
 - Future recordings should be stored on the old phone by default.

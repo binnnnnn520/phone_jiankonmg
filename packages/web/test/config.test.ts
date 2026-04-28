@@ -5,7 +5,8 @@ import { loadClientConfig } from "../src/config.js";
 test("loadClientConfig uses localhost signaling defaults", () => {
   assert.deepEqual(loadClientConfig({}), {
     httpUrl: "http://localhost:8787",
-    wsUrl: "ws://localhost:8787/ws"
+    wsUrl: "ws://localhost:8787/ws",
+    preferredConnectionMode: "auto"
   });
 });
 
@@ -17,7 +18,16 @@ test("loadClientConfig accepts Vite-provided signaling URLs", () => {
     }),
     {
       httpUrl: "https://signal.example",
-      wsUrl: "wss://signal.example/ws"
+      wsUrl: "wss://signal.example/ws",
+      preferredConnectionMode: "auto"
     }
+  );
+});
+
+test("loadClientConfig accepts a preferred connection mode override", () => {
+  assert.equal(
+    loadClientConfig({ VITE_PREFERRED_CONNECTION_MODE: "remote" })
+      .preferredConnectionMode,
+    "remote"
   );
 });

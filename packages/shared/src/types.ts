@@ -1,6 +1,14 @@
 export type RoomId = string;
 export type ClientRole = "camera" | "viewer";
 
+export type ConnectionMode = "nearby" | "remote";
+
+export type ConnectionModeLabel =
+  | "Same Wi-Fi"
+  | "Remote"
+  | "Checking connection"
+  | "Falling back to remote";
+
 export type RoomStatus =
   | "waiting-for-viewer"
   | "pin-required"

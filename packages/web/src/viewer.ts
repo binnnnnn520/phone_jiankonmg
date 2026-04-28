@@ -4,6 +4,11 @@ import type {
   VerifyPinResponse
 } from "@phone-monitor/shared";
 import { verifyPin as verifyPinRequest } from "./api.js";
+import {
+  browserConnectionModeStorage,
+  chooseConnectionMode,
+  resolvePreferredConnectionMode
+} from "./connection-mode.js";
 import { loadClientConfig, type ClientConfig } from "./config.js";
 import {
   SignalingClient,
@@ -24,6 +29,14 @@ type VerifyPinFn = (
 
 type CreateSignalingClientFn = (wsUrl: string) => SignalingClientLike;
 type CreatePeerFn = (params: CreatePeerParams) => PeerController;
+
+interface BarcodeDetectorLike {
+  detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
+}
+
+interface BarcodeDetectorConstructorLike {
+  new (options: { formats: string[] }): BarcodeDetectorLike;
+}
 
 export interface ViewerSession {
   disconnect: () => void;
@@ -127,28 +140,161 @@ function handleViewerSignal(
   }
 }
 
+export function extractRoomFromQrPayload(payload: string): string {
+  const trimmed = payload.trim();
+  try {
+    const baseOrigin =
+      (globalThis as typeof globalThis & { window?: Window }).window?.location
+        .origin ?? "https://local.invalid";
+    const url = new URL(trimmed, baseOrigin);
+    return url.searchParams.get("room")?.trim() || trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+async function scanQrIntoRoom(params: {
+  panel: HTMLElement;
+  video: HTMLVideoElement;
+  roomInput: HTMLInputElement;
+  status: HTMLElement;
+  cancelButton: HTMLButtonElement;
+}): Promise<void> {
+  const detectorConstructor = (globalThis as typeof globalThis & {
+    BarcodeDetector?: BarcodeDetectorConstructorLike;
+  }).BarcodeDetector;
+
+  if (!detectorConstructor || !navigator.mediaDevices?.getUserMedia) {
+    params.status.textContent =
+      "QR scanning is not available in this browser. Open the QR link or enter the room manually.";
+    return;
+  }
+
+  let cancelled = false;
+  let stream: MediaStream | undefined;
+  params.cancelButton.addEventListener(
+    "click",
+    () => {
+      cancelled = true;
+    },
+    { once: true }
+  );
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false
+    });
+    params.video.srcObject = stream;
+    params.panel.hidden = false;
+    await params.video.play().catch(() => undefined);
+
+    const detector = new detectorConstructor({ formats: ["qr_code"] });
+    const expiresAt = Date.now() + 15000;
+
+    while (!cancelled && Date.now() < expiresAt) {
+      const codes = await detector.detect(params.video).catch(() => []);
+      const room = codes
+        .map((code) => code.rawValue)
+        .filter((value): value is string => Boolean(value))
+        .map(extractRoomFromQrPayload)
+        .find(Boolean);
+
+      if (room) {
+        params.roomInput.value = room;
+        params.status.textContent =
+          "QR code scanned. Enter the PIN shown on the camera phone.";
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    if (!cancelled) {
+      params.status.textContent =
+        "No QR code found. Keep the code inside the camera view or enter the room manually.";
+    }
+  } catch {
+    params.status.textContent =
+      "Camera access was not available for QR scanning. Enter the room manually.";
+  } finally {
+    if (stream) {
+      for (const track of stream.getTracks()) track.stop();
+    }
+    params.video.srcObject = null;
+    params.panel.hidden = true;
+  }
+}
+
 export function renderViewer(app: HTMLElement): void {
   const params = new URLSearchParams(window.location.search);
   const initialRoom = params.get("room") ?? "";
   const doc = app.ownerDocument;
+  const config = loadClientConfig();
+  const preferredConnectionMode = resolvePreferredConnectionMode({
+    params,
+    storage: browserConnectionModeStorage(),
+    configuredMode: config.preferredConnectionMode
+  });
+  const runtimeConfig = { ...config, preferredConnectionMode };
+  const connectionMode = chooseConnectionMode(runtimeConfig);
 
   const section = doc.createElement("section");
-  section.className = "app-shell monitor-panel";
+  section.className = "app-shell monitor-panel viewer-screen";
 
   const header = doc.createElement("header");
-  header.className = "screen-header";
-  const eyebrow = doc.createElement("p");
-  eyebrow.className = "eyebrow";
-  eyebrow.textContent = "Viewer";
+  header.className = "top-bar";
+  const back = doc.createElement("button");
+  back.className = "icon-button ghost-button";
+  back.type = "button";
+  back.setAttribute("aria-label", "Back");
   const heading = doc.createElement("h1");
-  heading.textContent = "Live Monitor";
-  header.append(eyebrow, heading);
+  heading.className = "top-title";
+  heading.textContent = "Phone Monitor";
+  const mode = doc.createElement("p");
+  mode.className = "mode-pill";
+  mode.id = "connection-mode";
+  mode.textContent = connectionMode.label;
+  header.append(back, heading, mode);
+
+  const videoWrap = doc.createElement("div");
+  videoWrap.className = "video-frame viewer-video-frame";
+  const video = doc.createElement("video");
+  video.id = "remote";
+  video.autoplay = true;
+  video.playsInline = true;
+  video.controls = true;
+  const liveBadge = doc.createElement("span");
+  liveBadge.className = "video-badge";
+  liveBadge.textContent = "Live";
+  videoWrap.append(video, liveBadge);
 
   const status = doc.createElement("p");
-  status.className = "status";
+  status.className = "connected-card";
   status.id = "status";
   status.setAttribute("role", "status");
-  status.textContent = "Enter the room and PIN from the camera phone.";
+  status.textContent = "Connect to a camera";
+
+  const scan = doc.createElement("button");
+  scan.className = "scan-qr-button";
+  scan.id = "scan-qr";
+  scan.type = "button";
+  scan.textContent = "Scan QR code";
+
+  const scannerPanel = doc.createElement("section");
+  scannerPanel.className = "qr-scanner-panel";
+  scannerPanel.hidden = true;
+  const scannerVideo = doc.createElement("video");
+  scannerVideo.id = "qr-scanner-video";
+  scannerVideo.autoplay = true;
+  scannerVideo.muted = true;
+  scannerVideo.playsInline = true;
+  const cancelScan = doc.createElement("button");
+  cancelScan.className = "ghost-outline";
+  cancelScan.id = "cancel-scan";
+  cancelScan.type = "button";
+  cancelScan.textContent = "Cancel scan";
+  scannerPanel.append(scannerVideo, cancelScan);
 
   const form = doc.createElement("form");
   form.className = "form-grid";
@@ -175,23 +321,25 @@ export function renderViewer(app: HTMLElement): void {
   connect.textContent = "Connect";
   form.append(roomLabel, pinLabel, connect);
 
-  const video = doc.createElement("video");
-  video.id = "remote";
-  video.autoplay = true;
-  video.playsInline = true;
-  video.controls = true;
-
   const disconnect = doc.createElement("button");
-  disconnect.className = "danger";
+  disconnect.className = "danger full-action";
   disconnect.id = "disconnect";
   disconnect.type = "button";
   disconnect.textContent = "Disconnect";
 
-  section.append(header, status, form, video, disconnect);
+  section.append(header, videoWrap, status, scan, scannerPanel, form, disconnect);
   app.replaceChildren(section);
-
-  const config = loadClientConfig();
   let session: ViewerSession | undefined;
+
+  scan.addEventListener("click", () => {
+    void scanQrIntoRoom({
+      panel: scannerPanel,
+      video: scannerVideo,
+      roomInput,
+      status,
+      cancelButton: cancelScan
+    });
+  });
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -205,7 +353,7 @@ export function renderViewer(app: HTMLElement): void {
 
       session?.disconnect();
       session = await startViewerSession({
-        config,
+        config: runtimeConfig,
         roomId,
         pin,
         video,

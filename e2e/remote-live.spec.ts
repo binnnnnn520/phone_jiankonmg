@@ -10,9 +10,7 @@ test("camera page creates a visible monitoring session", async ({ page }) => {
 
   await page.goto("/?mode=camera");
 
-  await expect(
-    page.getByRole("heading", { name: "Active Monitoring" })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Phone Monitor" })).toBeVisible();
 
   const roomResponse = await roomResponsePromise;
   const room = (await roomResponse.json()) as {
@@ -27,19 +25,20 @@ test("camera page creates a visible monitoring session", async ({ page }) => {
   expect(room.qrPayload).toEqual(expect.stringContaining(String(room.roomId)));
   expect(room.qrPayload).not.toContain(String(room.cameraToken));
 
-  await expect(page.getByText("Viewer PIN")).toBeVisible();
+  await expect(page.getByText("PIN", { exact: true })).toBeVisible();
   await expect(page.locator("#pin")).toHaveText(/^\d{6}$/);
   await expect(page.getByLabel("Viewer QR code")).toBeVisible();
+  await expect(page.locator("#connection-mode")).toHaveText("Remote");
   await expect(page.getByRole("status")).toHaveText(/waiting for a viewer/i);
 });
 
 test("viewer page shows PIN-gated connection UI", async ({ page }) => {
   await page.goto("/?mode=viewer");
 
-  await expect(page.getByRole("heading", { name: "Live Monitor" })).toBeVisible();
-  await expect(page.getByRole("status")).toHaveText(
-    "Enter the room and PIN from the camera phone."
-  );
+  await expect(page.getByRole("heading", { name: "Phone Monitor" })).toBeVisible();
+  await expect(page.locator("#connection-mode")).toHaveText("Remote");
+  await expect(page.getByRole("status")).toHaveText("Connect to a camera");
+  await expect(page.getByRole("button", { name: "Scan QR code" })).toBeVisible();
   await expect(page.getByLabel("Room")).toBeVisible();
   await expect(page.getByLabel("PIN")).toBeVisible();
   await expect(
@@ -47,10 +46,64 @@ test("viewer page shows PIN-gated connection UI", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("home connection mode selection flows into viewer and camera pages", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByRole("button", { name: "Remote" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  await page.getByRole("button", { name: "Same Wi-Fi" }).click();
+  await expect(page.getByRole("button", { name: "Same Wi-Fi" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  await page.getByRole("button", { name: "Watch a camera" }).click();
+  await expect(page).toHaveURL(/connection=nearby/);
+  await expect(page.locator("#connection-mode")).toHaveText("Same Wi-Fi");
+
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Same Wi-Fi" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  await page.getByRole("button", { name: "Use this phone as camera" }).click();
+  await expect(page).toHaveURL(/connection=nearby/);
+  await expect(page.locator("#connection-mode")).toHaveText("Same Wi-Fi");
+});
+
+test("bottom navigation switches between home tabs", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByRole("button", { name: "Home" })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+
+  await page.getByRole("button", { name: "Cameras" }).click();
+  await expect(page).toHaveURL(/tab=cameras/);
+  await expect(page.getByRole("button", { name: "Cameras" })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+  await expect(page.getByRole("heading", { name: "Cameras" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Me", exact: true }).click();
+  await expect(page).toHaveURL(/tab=me/);
+  await expect(page.getByRole("button", { name: "Me", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+  await expect(page.getByRole("heading", { name: "Me" })).toBeVisible();
+});
+
 test("viewer room links prefill the room before PIN entry", async ({ page }) => {
   await page.goto("/?room=room-from-qr");
 
-  await expect(page.getByRole("heading", { name: "Live Monitor" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Phone Monitor" })).toBeVisible();
   await expect(page.getByLabel("Room")).toHaveValue("room-from-qr");
   await expect(page.getByLabel("PIN")).toBeVisible();
 });

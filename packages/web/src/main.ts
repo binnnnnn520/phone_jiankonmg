@@ -1,5 +1,13 @@
 import "./styles.css";
+import type { ConnectionMode } from "@phone-monitor/shared";
 import { renderCamera } from "./camera.js";
+import {
+  browserConnectionModeStorage,
+  parseConnectionMode,
+  resolvePreferredConnectionMode,
+  storeConnectionMode
+} from "./connection-mode.js";
+import { buildHomeMarkup, parseHomeTab, type HomeTab } from "./home.js";
 import { resolveRoute } from "./routes.js";
 import { renderViewer } from "./viewer.js";
 
@@ -11,22 +19,54 @@ function navigate(search: string): void {
   renderApp();
 }
 
+function selectedConnectionMode(): ConnectionMode {
+  return resolvePreferredConnectionMode({
+    storage: browserConnectionModeStorage(),
+    configuredMode: "auto"
+  });
+}
+
+function routeWithConnectionMode(mode: "camera" | "viewer"): string {
+  return `/?${new URLSearchParams({
+    mode,
+    connection: selectedConnectionMode()
+  }).toString()}`;
+}
+
+function selectedHomeTab(): HomeTab {
+  return parseHomeTab(new URLSearchParams(window.location.search).get("tab"));
+}
+
+function routeWithHomeTab(tab: HomeTab): string {
+  if (tab === "home") return "/";
+  return `/?${new URLSearchParams({ tab }).toString()}`;
+}
+
 function renderHome(): void {
-  appRoot.innerHTML = `
-    <section class="app-shell home-shell">
-      <header class="screen-header">
-        <p class="eyebrow">Phone Monitor</p>
-        <h1>Remote Live View</h1>
-      </header>
-      <p class="status">Start a visible camera session or join one with a room link and PIN.</p>
-      <div class="actions">
-        <button id="camera" type="button">Use this phone as camera</button>
-        <button id="viewer" type="button">Watch a camera</button>
-      </div>
-    </section>
-  `;
-  appRoot.querySelector("#camera")?.addEventListener("click", () => navigate("/?mode=camera"));
-  appRoot.querySelector("#viewer")?.addEventListener("click", () => navigate("/?mode=viewer"));
+  const activeTab = selectedHomeTab();
+  appRoot.innerHTML = buildHomeMarkup(selectedConnectionMode(), activeTab);
+  appRoot
+    .querySelectorAll<HTMLButtonElement>("[data-connection-mode]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = parseConnectionMode(button.dataset.connectionMode);
+        if (!mode) return;
+        storeConnectionMode(browserConnectionModeStorage(), mode);
+        renderHome();
+      });
+    });
+  appRoot.querySelectorAll<HTMLButtonElement>("[data-home-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const tab = parseHomeTab(button.dataset.homeTab);
+      navigate(routeWithHomeTab(tab));
+    });
+  });
+  appRoot
+    .querySelector("#camera")
+    ?.addEventListener("click", () => navigate(routeWithConnectionMode("camera")));
+  appRoot
+    .querySelector("#viewer")
+    ?.addEventListener("click", () => navigate(routeWithConnectionMode("viewer")));
 }
 
 function renderApp(): void {

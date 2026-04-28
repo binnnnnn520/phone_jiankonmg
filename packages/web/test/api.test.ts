@@ -5,7 +5,8 @@ import type { ClientConfig } from "../src/config.js";
 
 const config: ClientConfig = {
   httpUrl: "https://signal.example",
-  wsUrl: "wss://signal.example/ws"
+  wsUrl: "wss://signal.example/ws",
+  preferredConnectionMode: "auto"
 };
 
 test("createRoom posts to the room endpoint and returns the server payload", async () => {

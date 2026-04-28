@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SignalingMessage, UserFacingConnectionState } from "@phone-monitor/shared";
-import { renderViewer, startViewerSession } from "../src/viewer.js";
+import {
+  extractRoomFromQrPayload,
+  renderViewer,
+  startViewerSession
+} from "../src/viewer.js";
 import type { ClientConfig } from "../src/config.js";
 import type { SignalingClientLike } from "../src/signaling-client.js";
 import type { PeerController } from "../src/webrtc.js";
 
 const config: ClientConfig = {
   httpUrl: "https://signal.example",
-  wsUrl: "wss://signal.example/ws"
+  wsUrl: "wss://signal.example/ws",
+  preferredConnectionMode: "auto"
 };
 
 function createSignaling(events: string[]): SignalingClientLike {
@@ -238,6 +243,44 @@ test("renderViewer keeps malicious room query text literal without injected DOM"
 
   assert.equal(app.querySelector("#injected"), null);
   assert.equal(app.querySelector("#room")?.value, maliciousRoom);
+});
+
+test("renderViewer shows the remote connection mode label by default", () => {
+  const app = new TestDocument().createElement("div");
+
+  withWindowSearch("?mode=viewer", () => {
+    renderViewer(app as unknown as HTMLElement);
+  });
+
+  assert.equal(app.querySelector("#connection-mode")?.textContent, "Remote");
+});
+
+test("renderViewer honors a same Wi-Fi connection route override", () => {
+  const app = new TestDocument().createElement("div");
+
+  withWindowSearch("?mode=viewer&connection=nearby", () => {
+    renderViewer(app as unknown as HTMLElement);
+  });
+
+  assert.equal(app.querySelector("#connection-mode")?.textContent, "Same Wi-Fi");
+});
+
+test("renderViewer includes a QR scan action before manual PIN entry", () => {
+  const app = new TestDocument().createElement("div");
+
+  withWindowSearch("?mode=viewer", () => {
+    renderViewer(app as unknown as HTMLElement);
+  });
+
+  assert.equal(app.querySelector("#scan-qr")?.textContent, "Scan QR code");
+});
+
+test("extractRoomFromQrPayload reads room IDs from viewer URLs", () => {
+  assert.equal(
+    extractRoomFromQrPayload("https://public.example/monitor?room=room-123"),
+    "room-123"
+  );
+  assert.equal(extractRoomFromQrPayload("room-raw"), "room-raw");
 });
 
 test("startViewerSession shows ended state and clears video on explicit session-ended", async () => {

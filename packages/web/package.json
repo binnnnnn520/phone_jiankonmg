@@ -6,7 +6,7 @@
     "build": "vite build",
     "build:test": "tsc -p tsconfig.test.json",
     "dev": "vite --host 0.0.0.0",
-    "test": "npm run build:test && node dist-test/test/api.test.js && node dist-test/test/build-config.test.js && node dist-test/test/camera.test.js && node dist-test/test/config.test.js && node dist-test/test/routes.test.js && node dist-test/test/safety.test.js && node dist-test/test/signaling-client.test.js && node dist-test/test/viewer-session.test.js && node dist-test/test/webrtc.test.js",
+    "test": "npm run build:test && node dist-test/test/api.test.js && node dist-test/test/build-config.test.js && node dist-test/test/camera.test.js && node dist-test/test/config.test.js && node dist-test/test/connection-mode.test.js && node dist-test/test/home.test.js && node dist-test/test/routes.test.js && node dist-test/test/safety.test.js && node dist-test/test/signaling-client.test.js && node dist-test/test/viewer-session.test.js && node dist-test/test/webrtc.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {

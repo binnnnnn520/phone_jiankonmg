@@ -13,8 +13,29 @@ type CameraModule = typeof import("../src/camera.js") & {
   }) => SignalingMessage;
   buildViewerUrl?: (
     roomId: string,
-    options: { origin: string; publicViewerUrl?: string }
+    options: {
+      origin: string;
+      publicViewerUrl?: string;
+      connectionMode?: "nearby" | "remote";
+    }
   ) => string;
+  buildCameraShellMarkup?: (connectionLabel: string) => string;
+  handleCameraStartupFailure?: (params: {
+    error: unknown;
+    status: { textContent: string | null };
+    stream?: StoppableMediaStream;
+    signaling?: { close: () => void };
+    wakeLock?: WakeLockSentinelLike;
+    isSecureContext: boolean;
+    stopButton?: {
+      disabled: boolean;
+      addEventListener: (
+        type: string,
+        listener: () => void,
+        options?: { once?: boolean }
+      ) => void;
+    };
+  }) => Promise<void>;
   stopCameraSession?: (params: {
     peerController: { close: () => void };
     signaling?: {
@@ -41,6 +62,18 @@ test("buildViewerUrl creates a same-origin viewer URL with the room query", asyn
   );
 });
 
+test("buildCameraShellMarkup shows the approved same Wi-Fi mode copy", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCameraShellMarkup, "function");
+
+  const markup = camera.buildCameraShellMarkup!("Same Wi-Fi");
+
+  assert.match(markup, /Phone Monitor/);
+  assert.match(markup, /PIN/);
+  assert.match(markup, /Same Wi-Fi/);
+  assert.doesNotMatch(markup.toLowerCase(), /server|signaling|turn|nat|deploy/);
+});
+
 test("buildViewerUrl uses a configured public viewer base when provided", async () => {
   const camera = await cameraModule();
   assert.equal(typeof camera.buildViewerUrl, "function");
@@ -51,6 +84,19 @@ test("buildViewerUrl uses a configured public viewer base when provided", async 
       publicViewerUrl: "https://public.example/monitor?source=qr"
     }),
     "https://public.example/monitor?source=qr&room=room%2F1"
+  );
+});
+
+test("buildViewerUrl carries the selected connection mode into QR links", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildViewerUrl, "function");
+
+  assert.equal(
+    camera.buildViewerUrl!("room-1", {
+      origin: "https://app.example",
+      connectionMode: "nearby"
+    }),
+    "https://app.example/?room=room-1&connection=nearby"
   );
 });
 
@@ -98,6 +144,48 @@ test("stopCameraSession releases wake lock after ending the room", async () => {
   assert.deepEqual(events, [
     "close-peer",
     "send:session-ended",
+    "close-signaling",
+    "stop-track",
+    "release-wake-lock"
+  ]);
+});
+
+test("handleCameraStartupFailure keeps camera preview alive after remote pairing fails", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.handleCameraStartupFailure, "function");
+
+  const events: string[] = [];
+  let stopListener: (() => void) | undefined;
+  const status = { textContent: "" };
+  const stream: StoppableMediaStream = {
+    getTracks: () => [{ stop: () => events.push("stop-track") }]
+  };
+
+  await camera.handleCameraStartupFailure!({
+    error: new Error("Could not create monitoring room"),
+    status,
+    stream,
+    signaling: { close: () => events.push("close-signaling") },
+    wakeLock: {
+      release: async () => {
+        events.push("release-wake-lock");
+      }
+    },
+    isSecureContext: true,
+    stopButton: {
+      disabled: true,
+      addEventListener: (_type: string, listener: () => void) => {
+        stopListener = listener;
+      }
+    }
+  });
+
+  assert.match(status.textContent ?? "", /remote connection/i);
+  assert.deepEqual(events, ["close-signaling"]);
+
+  stopListener?.();
+  await Promise.resolve();
+  assert.deepEqual(events, [
     "close-signaling",
     "stop-track",
     "release-wake-lock"

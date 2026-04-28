@@ -10,6 +10,15 @@
 
 ---
 
+## Current Upgrade Plan
+
+This original Version 1 plan remains the baseline for the remote live viewing implementation. The next upgrade is tracked separately in `docs/superpowers/plans/2026-04-27-two-phone-local-first-upgrade.md` and changes the product direction to:
+
+- two-phone first user experience;
+- same-Wi-Fi nearby mode before remote mode;
+- hosted signaling/TURN as product-operated infrastructure, not user-managed setup;
+- image-generated UI mockup approval before major frontend redesign implementation.
+
 ## Scope Check
 
 The spec contains several future subsystems: Android native capture, local recording, motion detection, alerts, accounts, and playback. This plan implements only Version 1 remote live viewing. Future recording and Android native work must get separate specs and plans.

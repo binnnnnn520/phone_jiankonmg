@@ -3,7 +3,13 @@ import type {
   SignalingMessage
 } from "@phone-monitor/shared";
 import * as QRCode from "qrcode";
+import type { ConnectionMode } from "@phone-monitor/shared";
 import { createRoom } from "./api.js";
+import {
+  browserConnectionModeStorage,
+  chooseConnectionMode,
+  resolvePreferredConnectionMode
+} from "./connection-mode.js";
 import { loadClientConfig } from "./config.js";
 import {
   describeCameraError,
@@ -19,6 +25,7 @@ import { createPeer, type PeerController } from "./webrtc.js";
 export interface BuildViewerUrlOptions {
   origin: string;
   publicViewerUrl?: string;
+  connectionMode?: ConnectionMode;
 }
 
 export interface StopCameraSessionParams {
@@ -38,6 +45,9 @@ export function buildViewerUrl(
     ? new URL(publicViewerUrl)
     : new URL("/", options.origin);
   url.searchParams.set("room", roomId);
+  if (options.connectionMode) {
+    url.searchParams.set("connection", options.connectionMode);
+  }
   return url.toString();
 }
 
@@ -49,6 +59,77 @@ export function buildCameraJoinMessage(
     roomId: room.roomId,
     cameraToken: room.cameraToken
   };
+}
+
+export function buildCameraShellMarkup(connectionLabel: string): string {
+  return `
+    <section class="app-shell monitor-panel camera-screen">
+      <header class="top-bar">
+        <button class="icon-button ghost-button" type="button" aria-label="Back"></button>
+        <h1 class="top-title">Phone Monitor</h1>
+        <p class="live-indicator"><span aria-hidden="true"></span>Live</p>
+      </header>
+
+      <div class="video-frame camera-preview-frame">
+        <video id="preview" autoplay muted playsinline></video>
+        <span class="video-badge"><span aria-hidden="true"></span>Live</span>
+      </div>
+
+      <p class="pairing-instruction">Scan the QR code or enter the PIN on the other phone.</p>
+
+      <div class="pairing-card">
+        <canvas id="qr" aria-label="Viewer QR code"></canvas>
+        <div class="pin-panel">
+          <p class="label">PIN</p>
+          <p class="pin" id="pin">------</p>
+        </div>
+      </div>
+
+      <p class="ready-card" id="status" role="status">Starting camera...</p>
+      <p class="mode-pill" id="connection-mode">${connectionLabel}</p>
+      <button class="danger full-action" id="stop" type="button">Stop</button>
+    </section>
+  `;
+}
+
+export interface HandleCameraStartupFailureParams {
+  error: unknown;
+  status: Pick<HTMLElement, "textContent">;
+  stream?: StoppableMediaStream;
+  signaling?: Pick<SignalingClient, "close">;
+  wakeLock?: WakeLockSentinelLike;
+  isSecureContext: boolean;
+  stopButton?: Pick<HTMLButtonElement, "disabled" | "addEventListener">;
+}
+
+export async function handleCameraStartupFailure(
+  params: HandleCameraStartupFailureParams
+): Promise<void> {
+  const cameraStarted = Boolean(params.stream);
+  params.status.textContent = describeCameraError(
+    params.error,
+    params.isSecureContext,
+    cameraStarted
+  );
+  params.signaling?.close();
+
+  if (!params.stream) {
+    await releaseWakeLock(params.wakeLock);
+    return;
+  }
+
+  if (params.stopButton) {
+    params.stopButton.disabled = false;
+    params.stopButton.addEventListener(
+      "click",
+      async () => {
+        stopStream(params.stream!);
+        await releaseWakeLock(params.wakeLock);
+        params.status.textContent = "Session ended";
+      },
+      { once: true }
+    );
+  }
 }
 
 export async function stopCameraSession(
@@ -67,25 +148,14 @@ export async function stopCameraSession(
 
 export async function renderCamera(app: HTMLElement): Promise<void> {
   const config = loadClientConfig();
-  app.innerHTML = `
-    <section class="app-shell monitor-panel">
-      <header class="screen-header">
-        <p class="eyebrow">Camera</p>
-        <h1>Active Monitoring</h1>
-      </header>
-      <p class="status" id="status" role="status">Starting camera...</p>
-      <video id="preview" autoplay muted playsinline></video>
-      <div class="pairing-grid">
-        <canvas id="qr" aria-label="Viewer QR code"></canvas>
-        <div>
-          <p class="label">Viewer PIN</p>
-          <p class="pin" id="pin">------</p>
-          <p class="hint">Keep this phone visible, plugged in, and in the foreground.</p>
-        </div>
-      </div>
-      <button class="danger" id="stop" type="button">Stop monitoring</button>
-    </section>
-  `;
+  const preferredConnectionMode = resolvePreferredConnectionMode({
+    params: new URLSearchParams(window.location.search),
+    storage: browserConnectionModeStorage(),
+    configuredMode: config.preferredConnectionMode
+  });
+  const runtimeConfig = { ...config, preferredConnectionMode };
+  const connectionMode = chooseConnectionMode(runtimeConfig);
+  app.innerHTML = buildCameraShellMarkup(connectionMode.label);
 
   const status = app.querySelector<HTMLParagraphElement>("#status")!;
   const preview = app.querySelector<HTMLVideoElement>("#preview")!;
@@ -105,9 +175,10 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
     });
     preview.srcObject = stream;
 
-    const room: CreateRoomResponse = await createRoom(config);
+    const room: CreateRoomResponse = await createRoom(runtimeConfig);
     const viewerUrl = buildViewerUrl(room.roomId, {
       origin: window.location.origin,
+      connectionMode: connectionMode.mode,
       ...(config.publicViewerUrl
         ? { publicViewerUrl: config.publicViewerUrl }
         : {})
@@ -116,7 +187,7 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
     pin.textContent = room.pin;
     status.textContent = "Camera is visible and waiting for a viewer.";
 
-    signaling = new SignalingClient(config.wsUrl);
+    signaling = new SignalingClient(runtimeConfig.wsUrl);
     await signaling.connect();
     signaling.send(buildCameraJoinMessage(room));
 
@@ -161,13 +232,14 @@ export async function renderCamera(app: HTMLElement): Promise<void> {
       });
     });
   } catch (error) {
-    status.textContent = describeCameraError(
+    await handleCameraStartupFailure({
       error,
-      globalThis.isSecureContext,
-      Boolean(stream)
-    );
-    if (stream) stopStream(stream);
-    signaling?.close();
-    await releaseWakeLock(wakeLock);
+      status,
+      ...(stream ? { stream } : {}),
+      ...(signaling ? { signaling } : {}),
+      ...(wakeLock ? { wakeLock } : {}),
+      isSecureContext: globalThis.isSecureContext,
+      stopButton: stop
+    });
   }
 }

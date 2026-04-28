@@ -12,14 +12,25 @@ test("describeCameraError explains denied camera permission", () => {
 test("describeCameraError explains insecure network origins", () => {
   assert.match(
     describeCameraError(new DOMException("Denied", "NotAllowedError"), false),
-    /HTTPS or localhost/i
+    /secure HTTPS link or localhost/i
   );
 });
 
-test("describeCameraError explains signaling failures after camera starts", () => {
-  assert.match(
-    describeCameraError(new Error("Could not create monitoring room"), true, true),
-    /signaling server/i
+test("describeCameraError explains remote connection failures after camera starts", () => {
+  const message = describeCameraError(
+    new Error("Could not create monitoring room"),
+    true,
+    true
+  );
+
+  assert.match(message, /remote connection/i);
+  assert.doesNotMatch(message.toLowerCase(), /server|signaling|turn|nat|deploy/);
+});
+
+test("describeCameraError keeps insecure origin messaging free of deployment terms", () => {
+  assert.doesNotMatch(
+    describeCameraError(new DOMException("Denied", "NotAllowedError"), false),
+    /deploy/i
   );
 });
 
