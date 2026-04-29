@@ -54,6 +54,32 @@ test("home screen can render cameras and me tabs as active", () => {
   assert.match(meMarkup, /<h1>Me<\/h1>/);
 });
 
+test("me tab renders saved connection counts", () => {
+  const markup = buildHomeMarkup("remote", "me", [
+    {
+      pairId: "pair-1",
+      cameraDeviceId: "camera-device-1",
+      viewerDeviceId: "viewer-device-1",
+      viewerPairToken: "viewer-pair-token",
+      displayName: "Front door",
+      lastConnectedAt: 1000
+    },
+    {
+      pairId: "pair-2",
+      cameraDeviceId: "camera-device-2",
+      viewerDeviceId: "viewer-device-1",
+      viewerPairToken: "viewer-pair-token-2",
+      displayName: "Back room",
+      lastConnectedAt: 2000
+    }
+  ]);
+
+  assert.match(markup, /Your connections/);
+  assert.match(markup, /data-connection-count="saved"[^>]*>2<\/strong>/);
+  assert.match(markup, /data-connection-count="live"[^>]*>Checking<\/strong>/);
+  assert.match(markup, /data-connection-count="offline"[^>]*>Checking<\/strong>/);
+});
+
 test("cameras tab renders paired camera reconnect and remove actions", () => {
   const markup = buildHomeMarkup("remote", "cameras", [
     {

@@ -125,6 +125,36 @@ function buildConnectionPicker(selectedMode: ConnectionMode): string {
   `;
 }
 
+function buildConnectionSummary(pairedCameras: ViewerPairedCamera[]): string {
+  const savedCount = pairedCameras.length;
+  const statusLabel = savedCount === 0 ? "No saved cameras" : "Checking status";
+  const liveCount = savedCount === 0 ? "0" : "Checking";
+  const offlineCount = savedCount === 0 ? "0" : "Checking";
+
+  return `
+      <section class="connection-summary" aria-label="Connection status">
+        <div class="connection-summary-header">
+          <h2>Your connections</h2>
+          <span data-connection-summary-state>${statusLabel}</span>
+        </div>
+        <div class="connection-summary-grid">
+          <span>
+            <small>Saved</small>
+            <strong data-connection-count="saved">${savedCount}</strong>
+          </span>
+          <span>
+            <small>Live</small>
+            <strong data-connection-count="live">${liveCount}</strong>
+          </span>
+          <span>
+            <small>Offline</small>
+            <strong data-connection-count="offline">${offlineCount}</strong>
+          </span>
+        </div>
+      </section>
+  `;
+}
+
 function buildTabContent(
   selectedMode: ConnectionMode,
   activeTab: HomeTab,
@@ -141,6 +171,7 @@ function buildTabContent(
   if (activeTab === "me") {
     return `
       ${buildHomeHeader("Me", "Personal settings for this phone.")}
+      ${buildConnectionSummary(pairedCameras)}
       ${buildConnectionPicker(selectedMode)}
       <p class="home-note">Keep both phones charged and on the app.</p>
     `;

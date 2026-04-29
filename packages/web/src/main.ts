@@ -59,17 +59,27 @@ function routeWithHomeTab(tab: HomeTab): string {
 }
 
 function refreshPairStatuses(pairedCameras: ViewerPairedCamera[]): void {
-  if (pairedCameras.length === 0) return;
+  if (pairedCameras.length === 0) {
+    updateConnectionSummary(0, 0);
+    return;
+  }
   const config = loadClientConfig();
-  for (const camera of pairedCameras) {
-    void getPairStatus(config, camera)
+  void Promise.all(
+    pairedCameras.map((camera) =>
+      getPairStatus(config, camera)
       .then((status) => {
         updatePairStatus(camera.pairId, status.status === "live" ? "Live" : "Offline");
+        return status.status;
       })
       .catch(() => {
         updatePairStatus(camera.pairId, "Offline");
-      });
-  }
+        return "offline" as const;
+      })
+    )
+  ).then((statuses) => {
+    const liveCount = statuses.filter((status) => status === "live").length;
+    updateConnectionSummary(liveCount, statuses.length - liveCount);
+  });
 }
 
 function updatePairStatus(pairId: string, label: string): void {
@@ -77,6 +87,22 @@ function updatePairStatus(pairId: string, label: string): void {
     appRoot.querySelectorAll<HTMLElement>("[data-pair-status]")
   ).find((element) => element.dataset.pairStatus === pairId);
   if (status) status.textContent = label;
+}
+
+function updateConnectionSummary(liveCount: number, offlineCount: number): void {
+  const live = appRoot.querySelector<HTMLElement>('[data-connection-count="live"]');
+  const offline = appRoot.querySelector<HTMLElement>('[data-connection-count="offline"]');
+  const state = appRoot.querySelector<HTMLElement>("[data-connection-summary-state]");
+  if (live) live.textContent = String(liveCount);
+  if (offline) offline.textContent = String(offlineCount);
+  if (state) {
+    state.textContent =
+      liveCount > 0
+        ? `${liveCount} live now`
+        : offlineCount > 0
+          ? "All offline"
+          : "No saved cameras";
+  }
 }
 
 function renderHome(): void {
@@ -126,7 +152,9 @@ function renderHome(): void {
   appRoot
     .querySelector("#viewer")
     ?.addEventListener("click", () => navigate(routeWithConnectionMode("viewer")));
-  if (activeTab === "cameras") refreshPairStatuses(pairedCameras);
+  if (activeTab === "cameras" || activeTab === "me") {
+    refreshPairStatuses(pairedCameras);
+  }
 }
 
 function renderApp(): void {

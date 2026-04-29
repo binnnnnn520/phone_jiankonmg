@@ -102,6 +102,42 @@ test("bottom navigation switches between home tabs", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Me" })).toBeVisible();
 });
 
+test("me tab summarizes saved and live connections", async ({ page }) => {
+  const viewer = await page.context().newPage();
+  const dashboard = await page.context().newPage();
+  const roomResponsePromise = page.waitForResponse((response) => {
+    return (
+      response.url().endsWith("/rooms") &&
+      response.request().method() === "POST"
+    );
+  });
+
+  try {
+    await page.goto("/?mode=camera");
+    const roomResponse = await roomResponsePromise;
+    const room = (await roomResponse.json()) as {
+      pin: string;
+      roomId: string;
+    };
+
+    await viewer.goto(`/?room=${encodeURIComponent(room.roomId)}`);
+    await viewer.getByLabel("PIN").fill(room.pin);
+    await viewer.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(viewer.getByRole("status")).toHaveText(
+      /connecting|live|using relay connection/i
+    );
+
+    await dashboard.goto("/?tab=me");
+    await expect(dashboard.getByText("Your connections")).toBeVisible();
+    await expect(dashboard.locator('[data-connection-count="saved"]')).toHaveText("1");
+    await expect(dashboard.locator('[data-connection-count="live"]')).toHaveText("1");
+    await expect(dashboard.locator('[data-connection-count="offline"]')).toHaveText("0");
+  } finally {
+    await viewer.close().catch(() => undefined);
+    await dashboard.close().catch(() => undefined);
+  }
+});
+
 test("camera and viewer back buttons return to the home screen", async ({ page }) => {
   await page.goto("/?mode=camera");
   await page.getByRole("button", { name: "Back" }).click();
