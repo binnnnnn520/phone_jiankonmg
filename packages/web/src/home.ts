@@ -5,12 +5,18 @@ import {
   type PairedCameraStatus,
   type PairedCameraStatusLookup
 } from "./paired-cameras.js";
+import {
+  VIDEO_QUALITY_OPTIONS,
+  labelVideoQuality,
+  type VideoQuality
+} from "./video-quality.js";
 
 export type HomeTab = "home" | "cameras" | "me";
 
 export interface HomeMarkupOptions {
   pairStatuses?: PairedCameraStatusLookup;
   cameraSearchQuery?: string;
+  selectedVideoQuality?: VideoQuality;
 }
 
 interface PairedCameraListOptions {
@@ -242,6 +248,30 @@ function buildCameraNameEditor(cameraDisplayName: string): string {
   `;
 }
 
+function buildVideoQualityButton(
+  quality: VideoQuality,
+  selectedQuality: VideoQuality
+): string {
+  const selected = quality === selectedQuality;
+  const className = selected
+    ? "quality-option quality-option-selected"
+    : "quality-option";
+  return `<button class="${className}" type="button" data-video-quality="${quality}" aria-pressed="${selected}">${labelVideoQuality(quality)}</button>`;
+}
+
+function buildVideoQualityPicker(selectedQuality: VideoQuality): string {
+  return `
+      <section class="video-quality-card" aria-label="Video quality">
+        <p class="video-quality-title">Video quality</p>
+        <div class="quality-options" role="group" aria-label="Video quality">
+          ${VIDEO_QUALITY_OPTIONS.map((option) =>
+            buildVideoQualityButton(option.value, selectedQuality)
+          ).join("")}
+        </div>
+      </section>
+  `;
+}
+
 function buildTabContent(
   selectedMode: ConnectionMode,
   activeTab: HomeTab,
@@ -263,8 +293,8 @@ function buildTabContent(
       ${buildConnectionSummary(pairedCameras)}
       ${buildBatteryStatusRow()}
       ${buildCameraNameEditor(cameraDisplayName)}
+      ${buildVideoQualityPicker(options.selectedVideoQuality ?? "balanced")}
       ${buildConnectionPicker(selectedMode)}
-      <p class="home-note">Keep both phones charged and on the app.</p>
     `;
   }
 
@@ -286,8 +316,13 @@ export function buildHomeMarkup(
   activeTab: HomeTab = "home",
   pairedCameras: ViewerPairedCamera[] = [],
   cameraDisplayName = "This phone camera",
-  options: HomeMarkupOptions = {}
+  optionsOrVideoQuality: HomeMarkupOptions | VideoQuality = {}
 ): string {
+  const options: HomeMarkupOptions =
+    typeof optionsOrVideoQuality === "string"
+      ? { selectedVideoQuality: optionsOrVideoQuality }
+      : optionsOrVideoQuality;
+
   return `
     <section class="app-shell home-shell light-monitor-shell">
       <div class="home-tab-content" data-active-home-tab="${activeTab}">
