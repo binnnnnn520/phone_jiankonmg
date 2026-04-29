@@ -96,8 +96,15 @@ p {
 }
 
 .home-shell {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.home-tab-content {
+  min-height: 732px;
+  display: grid;
+  align-content: start;
   gap: 18px;
 }
 
@@ -232,17 +239,17 @@ h1 {
 
 .home-actions {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .action-card {
   width: 100%;
-  min-height: 150px;
+  min-height: 128px;
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr) 44px;
   gap: 14px;
   align-items: center;
-  padding: 18px;
+  padding: 12px 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
@@ -919,7 +926,7 @@ canvas {
   }
 
   .home-status-strip span {
-    min-height: 64px;
+    min-height: 58px;
     padding: 8px;
   }
 
@@ -934,7 +941,12 @@ canvas {
   .action-card {
     grid-template-columns: 78px minmax(0, 1fr) 38px;
     gap: 10px;
-    padding: 14px;
+    min-height: 128px;
+    padding: 12px 14px;
+  }
+
+  .mode-option {
+    min-height: 56px;
   }
 
   .action-illustration {

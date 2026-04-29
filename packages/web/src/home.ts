@@ -166,7 +166,9 @@ export function buildHomeMarkup(
 ): string {
   return `
     <section class="app-shell home-shell light-monitor-shell">
-      ${buildTabContent(selectedMode, activeTab, pairedCameras)}
+      <div class="home-tab-content" data-active-home-tab="${activeTab}">
+        ${buildTabContent(selectedMode, activeTab, pairedCameras)}
+      </div>
       ${buildBottomNav(activeTab)}
     </section>
   `;
