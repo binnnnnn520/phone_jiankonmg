@@ -1,5 +1,6 @@
 import type {
   IceServerConfig,
+  PairReconnectResponse,
   SignalingMessage,
   UserFacingConnectionState,
   ViewerPairedCamera,
@@ -42,6 +43,21 @@ type VerifyPinFn = (
 
 type CreateSignalingClientFn = (wsUrl: string) => SignalingClientLike;
 type CreatePeerFn = (params: CreatePeerParams) => PeerController;
+type ReconnectPairFn = (
+  config: ClientConfig,
+  pairedCamera: ViewerPairedCamera
+) => Promise<PairReconnectResponse>;
+type StartViewerSessionWithTokenFn = (
+  params: StartViewerSessionWithTokenParams
+) => Promise<ViewerSession>;
+type ScheduleReconnectFn = (
+  callback: () => void | Promise<void>,
+  delayMs: number
+) => unknown;
+type CancelReconnectFn = (handle: unknown) => void;
+
+export const AUTO_RECONNECT_INTERVAL_MS = 5000;
+const AUTO_RECONNECT_WAITING_STATUS = "Camera offline. Waiting to reconnect...";
 
 interface BarcodeDetectorLike {
   detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
@@ -85,6 +101,26 @@ export interface StartViewerSessionWithTokenParams {
     createSignalingClient?: CreateSignalingClientFn;
     createPeer?: CreatePeerFn;
   };
+}
+
+export interface ViewerAutoReconnectController {
+  setPairedCamera: (pairedCamera: ViewerPairedCamera) => void;
+  connectNow: () => Promise<void>;
+  disconnect: () => void;
+}
+
+export interface CreateViewerAutoReconnectControllerParams {
+  config: ClientConfig;
+  video: HTMLVideoElement;
+  status: Pick<HTMLElement, "textContent">;
+  getSession: () => ViewerSession | undefined;
+  setSession: (session: ViewerSession | undefined) => void;
+  reconnectPair: ReconnectPairFn;
+  startViewerSessionWithToken: StartViewerSessionWithTokenFn;
+  upsertPairedCamera: (pairedCamera: ViewerPairedCamera) => void;
+  reconnectDelayMs?: number;
+  scheduleReconnect?: ScheduleReconnectFn;
+  cancelReconnect?: CancelReconnectFn;
 }
 
 export async function startViewerSession(
@@ -166,6 +202,136 @@ export async function startViewerSessionWithToken(
   };
 }
 
+export function createViewerAutoReconnectController(
+  params: CreateViewerAutoReconnectControllerParams
+): ViewerAutoReconnectController {
+  const reconnectDelayMs =
+    params.reconnectDelayMs ?? AUTO_RECONNECT_INTERVAL_MS;
+  const scheduleReconnect: ScheduleReconnectFn =
+    params.scheduleReconnect ??
+    ((callback, delayMs) => setTimeout(() => void callback(), delayMs));
+  const cancelReconnect: CancelReconnectFn =
+    params.cancelReconnect ??
+    ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+
+  let pairedCamera: ViewerPairedCamera | undefined;
+  let reconnectHandle: unknown;
+  let reconnecting = false;
+  let stopped = false;
+  let closingForReconnect = false;
+
+  function clearReconnectTimer(): void {
+    if (reconnectHandle === undefined) return;
+    cancelReconnect(reconnectHandle);
+    reconnectHandle = undefined;
+  }
+
+  function scheduleNextReconnect(): void {
+    if (stopped || reconnecting || reconnectHandle !== undefined || !pairedCamera) {
+      return;
+    }
+
+    reconnectHandle = scheduleReconnect(async () => {
+      reconnectHandle = undefined;
+      await connectNow().catch((error) => {
+        if (!stopped) params.status.textContent = describeReconnectError(error);
+      });
+    }, reconnectDelayMs);
+  }
+
+  function showWaitingForReconnect(): void {
+    if (stopped) return;
+    params.status.textContent = AUTO_RECONNECT_WAITING_STATUS;
+    scheduleNextReconnect();
+  }
+
+  function handleViewerState(state: UserFacingConnectionState): void {
+    if (closingForReconnect && state === "Session ended") return;
+
+    params.status.textContent = state;
+    if (stopped) return;
+
+    if (
+      state === "Camera offline" ||
+      state === "Session ended" ||
+      state === "Retry needed"
+    ) {
+      showWaitingForReconnect();
+    }
+  }
+
+  function closeCurrentSessionForReconnect(): void {
+    const currentSession = params.getSession();
+    if (!currentSession) return;
+
+    closingForReconnect = true;
+    currentSession.disconnect();
+    closingForReconnect = false;
+    params.setSession(undefined);
+  }
+
+  async function connectNow(): Promise<void> {
+    if (!pairedCamera || reconnecting || stopped) return;
+
+    reconnecting = true;
+    clearReconnectTimer();
+    let shouldKeepWaiting = false;
+
+    try {
+      params.status.textContent = "Reconnecting";
+      closeCurrentSessionForReconnect();
+      const reconnected = await params.reconnectPair(params.config, pairedCamera);
+      if (stopped) return;
+
+      pairedCamera = reconnected.pairedCamera;
+      params.upsertPairedCamera(reconnected.pairedCamera);
+
+      const nextSession = await params.startViewerSessionWithToken({
+        config: params.config,
+        roomId: reconnected.roomId,
+        viewerToken: reconnected.viewerToken,
+        iceServers: reconnected.iceServers,
+        video: params.video,
+        onState: handleViewerState
+      });
+
+      if (stopped) {
+        nextSession.disconnect();
+        return;
+      }
+
+      params.setSession(nextSession);
+    } catch (error) {
+      if (isPairCameraOfflineError(error)) {
+        shouldKeepWaiting = true;
+        return;
+      }
+      throw error;
+    } finally {
+      reconnecting = false;
+      if (shouldKeepWaiting) showWaitingForReconnect();
+    }
+  }
+
+  return {
+    setPairedCamera: (nextPairedCamera) => {
+      pairedCamera = nextPairedCamera;
+    },
+    connectNow,
+    disconnect: () => {
+      stopped = true;
+      clearReconnectTimer();
+      const currentSession = params.getSession();
+      params.setSession(undefined);
+      if (currentSession) {
+        currentSession.disconnect();
+        return;
+      }
+      params.status.textContent = "Session ended";
+    }
+  };
+}
+
 function setRemoteVideoActive(video: HTMLVideoElement, active: boolean): void {
   const dataset = (video as HTMLVideoElement & { dataset?: DOMStringMap }).dataset;
   if (!dataset) return;
@@ -236,6 +402,10 @@ function describeReconnectError(error: unknown): string {
     return "Another viewer is already connected to this camera.";
   }
   return message || "Could not reconnect";
+}
+
+function isPairCameraOfflineError(error: unknown): boolean {
+  return error instanceof Error && error.message === "PAIR_CAMERA_OFFLINE";
 }
 
 async function scanQrIntoRoom(params: {
@@ -430,10 +600,23 @@ export function renderViewer(
   section.append(header, videoWrap, status, scan, scannerPanel, form, disconnect);
   app.replaceChildren(section);
   let session: ViewerSession | undefined;
+  const autoReconnect = createViewerAutoReconnectController({
+    config: runtimeConfig,
+    video,
+    status,
+    getSession: () => session,
+    setSession: (nextSession) => {
+      session = nextSession;
+    },
+    reconnectPair,
+    startViewerSessionWithToken,
+    upsertPairedCamera: (pairedCamera) => {
+      upsertPairedCamera(pairStorage, pairedCamera);
+    }
+  });
 
   back.addEventListener("click", () => {
-    session?.disconnect();
-    session = undefined;
+    autoReconnect.disconnect();
     options.onBack?.();
   });
 
@@ -446,20 +629,8 @@ export function renderViewer(
       return;
     }
 
-    status.textContent = "Reconnecting";
-    const reconnected = await reconnectPair(runtimeConfig, pairedCamera);
-    upsertPairedCamera(pairStorage, reconnected.pairedCamera);
-    session?.disconnect();
-    session = await startViewerSessionWithToken({
-      config: runtimeConfig,
-      roomId: reconnected.roomId,
-      viewerToken: reconnected.viewerToken,
-      iceServers: reconnected.iceServers,
-      video,
-      onState: (state) => {
-        status.textContent = state;
-      }
-    });
+    autoReconnect.setPairedCamera(pairedCamera);
+    await autoReconnect.connectNow();
   }
 
   scan.addEventListener("click", () => {
@@ -482,7 +653,7 @@ export function renderViewer(
         return;
       }
 
-      session?.disconnect();
+      autoReconnect.disconnect();
       session = await startViewerSession({
         config: runtimeConfig,
         roomId,
@@ -502,8 +673,7 @@ export function renderViewer(
   });
 
   disconnect.addEventListener("click", () => {
-    session?.disconnect();
-    session = undefined;
+    autoReconnect.disconnect();
   });
 
   if (reconnectPairId) {

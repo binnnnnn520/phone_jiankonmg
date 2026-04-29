@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { SignalingMessage, UserFacingConnectionState } from "@phone-monitor/shared";
+import type {
+  IceServerConfig,
+  PairReconnectResponse,
+  SignalingMessage,
+  UserFacingConnectionState,
+  ViewerPairedCamera
+} from "@phone-monitor/shared";
 import {
   extractRoomFromQrPayload,
   renderViewer,
@@ -16,6 +22,47 @@ const config: ClientConfig = {
   wsUrl: "wss://signal.example/ws",
   preferredConnectionMode: "auto"
 };
+
+type TestViewerSession = {
+  disconnect: () => void;
+};
+
+type TestStartViewerSessionWithTokenParams = {
+  config: ClientConfig;
+  roomId: string;
+  viewerToken: string;
+  iceServers: IceServerConfig[];
+  video: HTMLVideoElement;
+  onState: (state: UserFacingConnectionState) => void;
+};
+
+type ViewerAutoReconnectController = {
+  setPairedCamera: (camera: ViewerPairedCamera) => void;
+  connectNow: () => Promise<void>;
+  disconnect: () => void;
+};
+
+type CreateViewerAutoReconnectController = (params: {
+  config: ClientConfig;
+  video: HTMLVideoElement;
+  status: Pick<HTMLElement, "textContent">;
+  getSession: () => TestViewerSession | undefined;
+  setSession: (session: TestViewerSession | undefined) => void;
+  reconnectPair: (
+    config: ClientConfig,
+    pairedCamera: ViewerPairedCamera
+  ) => Promise<PairReconnectResponse>;
+  startViewerSessionWithToken: (
+    params: TestStartViewerSessionWithTokenParams
+  ) => Promise<TestViewerSession>;
+  upsertPairedCamera: (camera: ViewerPairedCamera) => void;
+  reconnectDelayMs?: number;
+  scheduleReconnect?: (
+    callback: () => void | Promise<void>,
+    delayMs: number
+  ) => unknown;
+  cancelReconnect?: (handle: unknown) => void;
+}) => ViewerAutoReconnectController;
 
 function createSignaling(events: string[]): SignalingClientLike {
   return {
@@ -85,6 +132,52 @@ function pairedCamera() {
     displayName: "Paired camera",
     lastConnectedAt: 1000
   };
+}
+
+function reconnectResponse(roomId: string): PairReconnectResponse {
+  return {
+    roomId,
+    viewerToken: `viewer-token-${roomId}`,
+    iceServers: [{ urls: "stun:example.test" }],
+    pairedCamera: {
+      ...pairedCamera(),
+      lastConnectedAt: Number(roomId.replace(/\D/g, "")) || 1
+    }
+  };
+}
+
+function offlinePairError(): Error {
+  return new Error("PAIR_CAMERA_OFFLINE");
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function settlePromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function loadReconnectController(): Promise<CreateViewerAutoReconnectController> {
+  const viewerModule = (await import("../src/viewer.js")) as {
+    createViewerAutoReconnectController?: unknown;
+  };
+  assert.equal(
+    typeof viewerModule.createViewerAutoReconnectController,
+    "function"
+  );
+  return viewerModule.createViewerAutoReconnectController as CreateViewerAutoReconnectController;
 }
 
 class TestDocument {
@@ -250,6 +343,229 @@ test("startViewerSessionWithToken joins signaling without verifying the PIN", as
     "send:join-viewer",
     "state:Connecting"
   ]);
+});
+
+test("viewer auto reconnect waits offline and restarts token sessions", async () => {
+  const createController = await loadReconnectController();
+  const status = { textContent: "" };
+  const video = {} as HTMLVideoElement;
+  const scheduled: Array<{
+    callback: () => void | Promise<void>;
+    delayMs: number;
+  }> = [];
+  const savedPairs: ViewerPairedCamera[] = [];
+  const stateHandlers: Array<(state: UserFacingConnectionState) => void> = [];
+  const responses: Array<() => Promise<PairReconnectResponse>> = [
+    async () => reconnectResponse("room-1"),
+    async () => {
+      throw offlinePairError();
+    },
+    async () => reconnectResponse("room-2")
+  ];
+  const reconnectAttempts: string[] = [];
+  const startedRooms: string[] = [];
+  let session: TestViewerSession | undefined;
+
+  const controller = createController({
+    config,
+    video,
+    status,
+    getSession: () => session,
+    setSession: (nextSession) => {
+      session = nextSession;
+    },
+    reconnectPair: async (_config, camera) => {
+      reconnectAttempts.push(camera.pairId);
+      const nextResponse = responses.shift();
+      assert.ok(nextResponse);
+      return nextResponse();
+    },
+    startViewerSessionWithToken: async (params) => {
+      startedRooms.push(params.roomId);
+      stateHandlers.push(params.onState);
+      params.onState("Connecting");
+      return {
+        disconnect: () => {
+          params.onState("Session ended");
+        }
+      };
+    },
+    upsertPairedCamera: (camera) => {
+      savedPairs.push(camera);
+    },
+    reconnectDelayMs: 25,
+    scheduleReconnect: (callback, delayMs) => {
+      scheduled.push({ callback, delayMs });
+      return callback;
+    }
+  });
+
+  controller.setPairedCamera(pairedCamera());
+  await controller.connectNow();
+
+  assert.equal(status.textContent, "Connecting");
+  assert.deepEqual(startedRooms, ["room-1"]);
+
+  stateHandlers[0]?.("Camera offline");
+
+  assert.equal(status.textContent, "Camera offline. Waiting to reconnect...");
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0]?.delayMs, 25);
+
+  await scheduled.shift()?.callback();
+  await settlePromises();
+
+  assert.equal(status.textContent, "Camera offline. Waiting to reconnect...");
+  assert.equal(scheduled.length, 1);
+  assert.deepEqual(startedRooms, ["room-1"]);
+
+  await scheduled.shift()?.callback();
+  await settlePromises();
+
+  assert.equal(status.textContent, "Connecting");
+  assert.deepEqual(startedRooms, ["room-1", "room-2"]);
+  assert.deepEqual(reconnectAttempts, ["pair-1", "pair-1", "pair-1"]);
+  assert.deepEqual(savedPairs.map((camera) => camera.lastConnectedAt), [1, 2]);
+  assert.equal(scheduled.length, 0);
+});
+
+test("viewer auto reconnect avoids concurrent attempts and stops on disconnect", async () => {
+  const createController = await loadReconnectController();
+  const status = { textContent: "" };
+  const video = {} as HTMLVideoElement;
+  const scheduled: Array<{
+    callback: () => void | Promise<void>;
+    delayMs: number;
+  }> = [];
+  const stateHandlers: Array<(state: UserFacingConnectionState) => void> = [];
+  const pendingReconnect = deferred<PairReconnectResponse>();
+  const responses: Array<() => Promise<PairReconnectResponse>> = [
+    async () => reconnectResponse("room-1"),
+    () => pendingReconnect.promise
+  ];
+  let reconnectAttemptCount = 0;
+  let startSessionCount = 0;
+  let session: TestViewerSession | undefined;
+
+  const controller = createController({
+    config,
+    video,
+    status,
+    getSession: () => session,
+    setSession: (nextSession) => {
+      session = nextSession;
+    },
+    reconnectPair: async () => {
+      reconnectAttemptCount += 1;
+      const nextResponse = responses.shift();
+      assert.ok(nextResponse);
+      return nextResponse();
+    },
+    startViewerSessionWithToken: async (params) => {
+      startSessionCount += 1;
+      stateHandlers.push(params.onState);
+      params.onState("Connecting");
+      return {
+        disconnect: () => {
+          params.onState("Session ended");
+        }
+      };
+    },
+    upsertPairedCamera: () => undefined,
+    reconnectDelayMs: 25,
+    scheduleReconnect: (callback, delayMs) => {
+      scheduled.push({ callback, delayMs });
+      return callback;
+    },
+    cancelReconnect: () => undefined
+  });
+
+  controller.setPairedCamera(pairedCamera());
+  await controller.connectNow();
+  stateHandlers[0]?.("Session ended");
+
+  const retry = scheduled.shift();
+  assert.ok(retry);
+  const firstRetry = retry.callback();
+  await retry.callback();
+
+  assert.equal(reconnectAttemptCount, 2);
+  assert.equal(startSessionCount, 1);
+
+  controller.disconnect();
+  pendingReconnect.resolve(reconnectResponse("room-2"));
+  await firstRetry;
+  await settlePromises();
+
+  assert.equal(reconnectAttemptCount, 2);
+  assert.equal(startSessionCount, 1);
+  assert.equal(status.textContent, "Session ended");
+});
+
+test("viewer auto reconnect closes stale sessions before retrying retry-needed state", async () => {
+  const createController = await loadReconnectController();
+  const status = { textContent: "" };
+  const video = {} as HTMLVideoElement;
+  const scheduled: Array<{
+    callback: () => void | Promise<void>;
+    delayMs: number;
+  }> = [];
+  const stateHandlers: Array<(state: UserFacingConnectionState) => void> = [];
+  const responses: Array<() => Promise<PairReconnectResponse>> = [
+    async () => reconnectResponse("room-1"),
+    async () => reconnectResponse("room-2")
+  ];
+  const startedRooms: string[] = [];
+  let reconnectAttemptCount = 0;
+  let disconnectCount = 0;
+  let session: TestViewerSession | undefined;
+
+  const controller = createController({
+    config,
+    video,
+    status,
+    getSession: () => session,
+    setSession: (nextSession) => {
+      session = nextSession;
+    },
+    reconnectPair: async () => {
+      reconnectAttemptCount += 1;
+      if (reconnectAttemptCount === 2) {
+        assert.equal(session, undefined);
+      }
+      const nextResponse = responses.shift();
+      assert.ok(nextResponse);
+      return nextResponse();
+    },
+    startViewerSessionWithToken: async (params) => {
+      startedRooms.push(params.roomId);
+      stateHandlers.push(params.onState);
+      params.onState("Connecting");
+      return {
+        disconnect: () => {
+          disconnectCount += 1;
+          params.onState("Session ended");
+        }
+      };
+    },
+    upsertPairedCamera: () => undefined,
+    reconnectDelayMs: 25,
+    scheduleReconnect: (callback, delayMs) => {
+      scheduled.push({ callback, delayMs });
+      return callback;
+    },
+    cancelReconnect: () => undefined
+  });
+
+  controller.setPairedCamera(pairedCamera());
+  await controller.connectNow();
+  stateHandlers[0]?.("Retry needed");
+  await scheduled.shift()?.callback();
+  await settlePromises();
+
+  assert.equal(disconnectCount, 1);
+  assert.deepEqual(startedRooms, ["room-1", "room-2"]);
+  assert.equal(status.textContent, "Connecting");
 });
 
 test("startViewerSession does not open signaling when PIN verification fails", async () => {

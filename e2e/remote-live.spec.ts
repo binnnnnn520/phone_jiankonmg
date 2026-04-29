@@ -376,7 +376,7 @@ test("paired camera can reconnect from Cameras tab without entering PIN again", 
   }
 });
 
-test("stopped paired camera reconnect shows offline feedback", async ({ page }) => {
+test("stopped paired camera reconnect waits while offline", async ({ page }) => {
   const viewer = await page.context().newPage();
   const roomResponsePromise = page.waitForResponse((response) => {
     return (
@@ -413,8 +413,76 @@ test("stopped paired camera reconnect shows offline feedback", async ({ page }) 
 
     await expect(viewer).toHaveURL(/pair=/);
     await expect(viewer.getByRole("status")).toHaveText(
-      "Camera is offline. Start monitoring on the camera phone, then try again."
+      "Camera offline. Waiting to reconnect..."
     );
+  } finally {
+    await viewer.close().catch(() => undefined);
+  }
+});
+
+test("paired viewer auto reconnects when camera restarts", async ({ page }) => {
+  const viewer = await page.context().newPage();
+  const roomResponsePromise = page.waitForResponse((response) => {
+    return (
+      response.url().endsWith("/rooms") &&
+      response.request().method() === "POST"
+    );
+  });
+
+  try {
+    await page.goto("/?mode=camera");
+    const roomResponse = await roomResponsePromise;
+    const room = (await roomResponse.json()) as {
+      pin: string;
+      roomId: string;
+    };
+    await expect(page.getByRole("status")).toHaveText(/waiting for a viewer/i);
+
+    await viewer.goto(`/?room=${encodeURIComponent(room.roomId)}`);
+    await viewer.getByLabel("PIN").fill(room.pin);
+    await viewer.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(viewer.getByRole("status")).toHaveText(
+      /connecting|live|using relay connection/i
+    );
+
+    await viewer.goto("/?tab=cameras");
+    await expect(viewer.getByText("This phone camera")).toBeVisible();
+    await expect(viewer.locator(".pair-status")).toHaveText("Live");
+    await viewer.getByRole("button", { name: "Reconnect", exact: true }).click();
+    await expect(viewer).toHaveURL(/pair=/);
+    await expect(viewer.getByRole("status")).toHaveText(
+      /connecting|live|using relay connection/i
+    );
+
+    await page.getByRole("button", { name: "Stop" }).click();
+    await expect(viewer.getByRole("status")).toHaveText(
+      "Camera offline. Waiting to reconnect..."
+    );
+
+    const restartRoomResponsePromise = page.waitForResponse((response) => {
+      return (
+        response.url().endsWith("/rooms") &&
+        response.request().method() === "POST"
+      );
+    });
+    await page.goto("/?mode=camera");
+    await restartRoomResponsePromise;
+    await expect(page.getByRole("status")).toHaveText(/waiting for a viewer/i);
+
+    await expect(viewer.getByRole("status")).toHaveText(
+      /connecting|live|using relay connection/i,
+      { timeout: 20000 }
+    );
+    await expect
+      .poll(
+        async () =>
+          viewer.locator("#remote").evaluate((element) => {
+            const video = element as HTMLVideoElement;
+            return `${Boolean(video.srcObject)}:${video.readyState}`;
+          }),
+        { timeout: 20000 }
+      )
+      .toMatch(/^true:[1-4]$/);
   } finally {
     await viewer.close().catch(() => undefined);
   }
