@@ -102,7 +102,7 @@ p {
 }
 
 .home-tab-content {
-  min-height: 732px;
+  min-height: 740px;
   display: grid;
   align-content: start;
   gap: 18px;
