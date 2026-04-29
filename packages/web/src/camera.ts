@@ -7,6 +7,10 @@ import * as QRCode from "qrcode";
 import type { ConnectionMode } from "@phone-monitor/shared";
 import { createRoom } from "./api.js";
 import {
+  formatBatterySnapshot,
+  watchBatterySnapshot
+} from "./battery-status.js";
+import {
   browserConnectionModeStorage,
   chooseConnectionMode,
   resolvePreferredConnectionMode
@@ -127,6 +131,7 @@ export function buildCameraShellMarkup(connectionLabel: string): string {
       </div>
 
       <p class="ready-card" id="status" role="status">Starting camera...</p>
+      <p class="battery-status session-battery-status" id="battery-status" data-battery-status>Battery unavailable</p>
       <p class="mode-pill" id="connection-mode">${connectionLabel}</p>
       <button class="danger full-action" id="stop" type="button">Stop</button>
     </section>
@@ -211,13 +216,25 @@ export async function renderCamera(
   const pin = app.querySelector<HTMLParagraphElement>("#pin")!;
   const stop = app.querySelector<HTMLButtonElement>("#stop")!;
   const back = app.querySelector<HTMLButtonElement>("[data-nav-back]")!;
+  const batteryStatus = app.querySelector<HTMLParagraphElement>("[data-battery-status]")!;
 
   let stream: MediaStream | undefined;
   let signaling: SignalingClient | undefined;
   let wakeLock: WakeLockSentinelLike | undefined;
   let peerController: PeerController | undefined;
+  let batteryStatusCleanup: (() => void) | undefined;
   let roomId = "";
   let closed = false;
+
+  void watchBatterySnapshot(navigator, (snapshot) => {
+    batteryStatus.textContent = formatBatterySnapshot(snapshot);
+  }).then((cleanup) => {
+    if (closed) {
+      cleanup();
+      return;
+    }
+    batteryStatusCleanup = cleanup;
+  });
 
   async function cleanupCameraSession(): Promise<void> {
     const currentPeerController = peerController;
@@ -225,12 +242,15 @@ export async function renderCamera(
     const currentSignaling = signaling;
     const currentStream = stream;
     const currentWakeLock = wakeLock;
+    const currentBatteryStatusCleanup = batteryStatusCleanup;
 
     peerController = undefined;
     roomId = "";
     signaling = undefined;
     stream = undefined;
     wakeLock = undefined;
+    batteryStatusCleanup = undefined;
+    currentBatteryStatusCleanup?.();
 
     if (currentPeerController && currentRoomId) {
       await stopCameraSession({

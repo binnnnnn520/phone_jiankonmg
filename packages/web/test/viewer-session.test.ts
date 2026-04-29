@@ -636,6 +636,16 @@ test("renderViewer includes a QR scan action before manual PIN entry", () => {
   assert.equal(app.querySelector("#scan-qr")?.textContent, "Scan QR code");
 });
 
+test("renderViewer includes compact battery status", () => {
+  const app = new TestDocument().createElement("div");
+
+  withWindowSearch("?mode=viewer", () => {
+    renderViewer(app as unknown as HTMLElement);
+  });
+
+  assert.equal(app.querySelector("#battery-status")?.textContent, "Battery unavailable");
+});
+
 test("extractRoomFromQrPayload reads room IDs from viewer URLs", () => {
   assert.equal(
     extractRoomFromQrPayload("https://public.example/monitor?room=room-123"),

@@ -11,6 +11,10 @@ import {
   verifyPin as verifyPinRequest
 } from "./api.js";
 import {
+  formatBatterySnapshot,
+  watchBatterySnapshot
+} from "./battery-status.js";
+import {
   browserConnectionModeStorage,
   chooseConnectionMode,
   resolvePreferredConnectionMode
@@ -543,6 +547,12 @@ export function renderViewer(
   status.setAttribute("role", "status");
   status.textContent = "Connect to a camera";
 
+  const batteryStatus = doc.createElement("p");
+  batteryStatus.className = "battery-status session-battery-status";
+  batteryStatus.id = "battery-status";
+  batteryStatus.setAttribute("data-battery-status", "");
+  batteryStatus.textContent = "Battery unavailable";
+
   const scan = doc.createElement("button");
   scan.className = "scan-qr-button";
   scan.id = "scan-qr";
@@ -597,9 +607,20 @@ export function renderViewer(
   disconnect.type = "button";
   disconnect.textContent = "Disconnect";
 
-  section.append(header, videoWrap, status, scan, scannerPanel, form, disconnect);
+  section.append(
+    header,
+    videoWrap,
+    status,
+    batteryStatus,
+    scan,
+    scannerPanel,
+    form,
+    disconnect
+  );
   app.replaceChildren(section);
   let session: ViewerSession | undefined;
+  let closed = false;
+  let batteryStatusCleanup: (() => void) | undefined;
   const autoReconnect = createViewerAutoReconnectController({
     config: runtimeConfig,
     video,
@@ -615,7 +636,20 @@ export function renderViewer(
     }
   });
 
+  void watchBatterySnapshot(navigator, (snapshot) => {
+    batteryStatus.textContent = formatBatterySnapshot(snapshot);
+  }).then((cleanup) => {
+    if (closed) {
+      cleanup();
+      return;
+    }
+    batteryStatusCleanup = cleanup;
+  });
+
   back.addEventListener("click", () => {
+    closed = true;
+    batteryStatusCleanup?.();
+    batteryStatusCleanup = undefined;
     autoReconnect.disconnect();
     options.onBack?.();
   });
