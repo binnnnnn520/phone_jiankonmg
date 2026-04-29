@@ -90,6 +90,16 @@ test("buildCameraShellMarkup shows the approved same Wi-Fi mode copy", async () 
   assert.doesNotMatch(markup.toLowerCase(), /server|signaling|turn|nat|deploy/);
 });
 
+test("buildCameraShellMarkup includes compact keep-awake guidance", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCameraShellMarkup, "function");
+
+  const markup = camera.buildCameraShellMarkup!("Remote");
+
+  assert.match(markup, /id="wake-lock-guidance"/);
+  assert.match(markup, /Keep this phone open/);
+});
+
 test("buildCreateRoomRequest reuses saved camera pairing credentials", async () => {
   const camera = await cameraModule();
   assert.equal(typeof camera.buildCreateRoomRequest, "function");

@@ -31,6 +31,10 @@ import {
   type CreatePeerParams,
   type PeerController
 } from "./webrtc.js";
+import {
+  createWakeLockController,
+  formatWakeLockGuidance
+} from "./safety.js";
 
 type VerifyPinFn = (
   config: ClientConfig,
@@ -373,6 +377,11 @@ export function renderViewer(
   status.setAttribute("role", "status");
   status.textContent = "Connect to a camera";
 
+  const wakeLockGuidance = doc.createElement("p");
+  wakeLockGuidance.className = "wake-lock-guidance";
+  wakeLockGuidance.id = "wake-lock-guidance";
+  wakeLockGuidance.textContent = "Keep this phone open";
+
   const scan = doc.createElement("button");
   scan.className = "scan-qr-button";
   scan.id = "scan-qr";
@@ -427,17 +436,35 @@ export function renderViewer(
   disconnect.type = "button";
   disconnect.textContent = "Disconnect";
 
-  section.append(header, videoWrap, status, scan, scannerPanel, form, disconnect);
+  section.append(
+    header,
+    videoWrap,
+    status,
+    wakeLockGuidance,
+    scan,
+    scannerPanel,
+    form,
+    disconnect
+  );
   app.replaceChildren(section);
   let session: ViewerSession | undefined;
+  const wakeLock = createWakeLockController({
+    onState: (state) => {
+      wakeLockGuidance.textContent = formatWakeLockGuidance(state);
+    }
+  });
+  wakeLockGuidance.textContent = formatWakeLockGuidance(wakeLock.state);
+  void wakeLock.request();
 
   back.addEventListener("click", () => {
     session?.disconnect();
     session = undefined;
+    void wakeLock.dispose();
     options.onBack?.();
   });
 
   async function reconnectFromStoredPair(pairId: string): Promise<void> {
+    await wakeLock.request();
     const pairedCamera = readPairedCameras(pairStorage).find(
       (camera) => camera.pairId === pairId
     );
@@ -482,6 +509,7 @@ export function renderViewer(
         return;
       }
 
+      await wakeLock.request();
       session?.disconnect();
       session = await startViewerSession({
         config: runtimeConfig,
@@ -504,6 +532,7 @@ export function renderViewer(
   disconnect.addEventListener("click", () => {
     session?.disconnect();
     session = undefined;
+    void wakeLock.release();
   });
 
   if (reconnectPairId) {
