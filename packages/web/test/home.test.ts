@@ -80,6 +80,18 @@ test("me tab renders saved connection counts", () => {
   assert.match(markup, /data-connection-count="offline"[^>]*>Checking<\/strong>/);
 });
 
+test("me tab renders compact battery status near connection summary", () => {
+  const markup = buildHomeMarkup("remote", "me");
+  const summaryIndex = markup.indexOf("connection-summary");
+  const batteryIndex = markup.indexOf("data-battery-status");
+  const cameraNameIndex = markup.indexOf("Camera name");
+
+  assert.notEqual(batteryIndex, -1);
+  assert.match(markup, /Battery unavailable/);
+  assert.ok(summaryIndex < batteryIndex);
+  assert.ok(batteryIndex < cameraNameIndex);
+});
+
 test("me tab renders an editable camera name", () => {
   const markup = buildHomeMarkup("remote", "me", [], "Kitchen phone");
 

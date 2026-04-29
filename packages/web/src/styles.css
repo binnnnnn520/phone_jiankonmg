@@ -555,6 +555,41 @@ h1 {
   box-shadow: inset 0 0 0 7px #fff4cf;
 }
 
+.battery-status {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid #b7e4da;
+  border-radius: 8px;
+  background: rgba(221, 245, 238, 0.72);
+  color: var(--teal-ink);
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.battery-status::before {
+  content: "";
+  width: 20px;
+  height: 11px;
+  flex: 0 0 auto;
+  border: 2px solid var(--teal);
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(12, 117, 108, 0.32) 62%, transparent 62%);
+  box-shadow: 12px 2px 0 -8px var(--teal);
+}
+
+.connection-summary + .battery-status {
+  margin-top: -6px;
+}
+
+.session-battery-status {
+  margin-top: -8px;
+}
+
 .paired-camera-empty,
 .paired-camera-card,
 .pairing-card,

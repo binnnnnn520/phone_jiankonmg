@@ -2,6 +2,10 @@ import "./styles.css";
 import type { ConnectionMode } from "@phone-monitor/shared";
 import type { ViewerPairedCamera } from "@phone-monitor/shared";
 import { getPairStatus } from "./api.js";
+import {
+  formatBatterySnapshot,
+  watchBatterySnapshot
+} from "./battery-status.js";
 import { renderCamera } from "./camera.js";
 import {
   browserConnectionModeStorage,
@@ -25,6 +29,8 @@ const appRoot = document.querySelector<HTMLDivElement>("#app")!;
 if (!appRoot) throw new Error("Missing app root");
 const PAIR_STATUS_REFRESH_MS = 5000;
 let pairStatusRefreshTimer: number | undefined;
+let homeBatteryStatusCleanup: (() => void) | undefined;
+let homeBatteryStatusWatchVersion = 0;
 
 function navigate(search: string): void {
   window.history.pushState({}, "", search);
@@ -36,6 +42,36 @@ function stopPairStatusRefresh(): void {
     window.clearInterval(pairStatusRefreshTimer);
     pairStatusRefreshTimer = undefined;
   }
+}
+
+function stopHomeBatteryStatusWatch(): void {
+  homeBatteryStatusWatchVersion += 1;
+  homeBatteryStatusCleanup?.();
+  homeBatteryStatusCleanup = undefined;
+}
+
+function startHomeBatteryStatusWatch(): void {
+  const batteryStatus = appRoot.querySelector<HTMLElement>("[data-battery-status]");
+  if (!batteryStatus) return;
+
+  const watchVersion = homeBatteryStatusWatchVersion;
+  void watchBatterySnapshot(navigator, (snapshot) => {
+    if (
+      watchVersion === homeBatteryStatusWatchVersion &&
+      appRoot.contains(batteryStatus)
+    ) {
+      batteryStatus.textContent = formatBatterySnapshot(snapshot);
+    }
+  }).then((cleanup) => {
+    if (
+      watchVersion !== homeBatteryStatusWatchVersion ||
+      !appRoot.contains(batteryStatus)
+    ) {
+      cleanup();
+      return;
+    }
+    homeBatteryStatusCleanup = cleanup;
+  });
 }
 
 function selectedConnectionMode(): ConnectionMode {
@@ -118,6 +154,7 @@ function updateConnectionSummary(liveCount: number, offlineCount: number): void 
 
 function renderHome(): void {
   stopPairStatusRefresh();
+  stopHomeBatteryStatusWatch();
   const activeTab = selectedHomeTab();
   const pairStorage = browserPairStorage();
   const pairedCameras = readPairedCameras(pairStorage);
@@ -127,6 +164,7 @@ function renderHome(): void {
     pairedCameras,
     readCameraDisplayName(pairStorage)
   );
+  startHomeBatteryStatusWatch();
   appRoot
     .querySelectorAll<HTMLButtonElement>("[data-connection-mode]")
     .forEach((button) => {
@@ -185,6 +223,7 @@ function renderHome(): void {
 
 function renderApp(): void {
   stopPairStatusRefresh();
+  stopHomeBatteryStatusWatch();
   const route = resolveRoute(new URLSearchParams(window.location.search));
   if (route === "camera") {
     void renderCamera(appRoot, { onBack: () => navigate("/") });

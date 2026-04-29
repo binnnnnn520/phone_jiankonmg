@@ -155,6 +155,12 @@ function buildConnectionSummary(pairedCameras: ViewerPairedCamera[]): string {
   `;
 }
 
+function buildBatteryStatusRow(): string {
+  return `
+      <p class="battery-status" id="battery-status" data-battery-status>Battery unavailable</p>
+  `;
+}
+
 function buildCameraNameEditor(cameraDisplayName: string): string {
   return `
       <section class="camera-name-card" aria-label="Camera name settings">
@@ -186,6 +192,7 @@ function buildTabContent(
     return `
       ${buildHomeHeader("Me", "Personal settings for this phone.")}
       ${buildConnectionSummary(pairedCameras)}
+      ${buildBatteryStatusRow()}
       ${buildCameraNameEditor(cameraDisplayName)}
       ${buildConnectionPicker(selectedMode)}
       <p class="home-note">Keep both phones charged and on the app.</p>
