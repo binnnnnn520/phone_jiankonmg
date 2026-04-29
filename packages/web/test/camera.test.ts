@@ -100,6 +100,16 @@ test("buildCameraShellMarkup includes compact battery status", async () => {
   assert.match(markup, /Battery unavailable/);
 });
 
+test("buildCameraShellMarkup includes compact keep-awake guidance", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCameraShellMarkup, "function");
+
+  const markup = camera.buildCameraShellMarkup!("Remote");
+
+  assert.match(markup, /id="wake-lock-guidance"/);
+  assert.match(markup, /Keep this phone open/);
+});
+
 test("buildCreateRoomRequest reuses saved camera pairing credentials", async () => {
   const camera = await cameraModule();
   assert.equal(typeof camera.buildCreateRoomRequest, "function");

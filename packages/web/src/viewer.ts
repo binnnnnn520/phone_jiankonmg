@@ -36,6 +36,10 @@ import {
   type CreatePeerParams,
   type PeerController
 } from "./webrtc.js";
+import {
+  createWakeLockController,
+  formatWakeLockGuidance
+} from "./safety.js";
 
 type VerifyPinFn = (
   config: ClientConfig,
@@ -553,6 +557,11 @@ export function renderViewer(
   batteryStatus.setAttribute("data-battery-status", "");
   batteryStatus.textContent = "Battery unavailable";
 
+  const wakeLockGuidance = doc.createElement("p");
+  wakeLockGuidance.className = "wake-lock-guidance";
+  wakeLockGuidance.id = "wake-lock-guidance";
+  wakeLockGuidance.textContent = "Keep this phone open";
+
   const scan = doc.createElement("button");
   scan.className = "scan-qr-button";
   scan.id = "scan-qr";
@@ -612,6 +621,7 @@ export function renderViewer(
     videoWrap,
     status,
     batteryStatus,
+    wakeLockGuidance,
     scan,
     scannerPanel,
     form,
@@ -621,6 +631,14 @@ export function renderViewer(
   let session: ViewerSession | undefined;
   let closed = false;
   let batteryStatusCleanup: (() => void) | undefined;
+  const wakeLock = createWakeLockController({
+    onState: (state) => {
+      wakeLockGuidance.textContent = formatWakeLockGuidance(state);
+    }
+  });
+  wakeLockGuidance.textContent = formatWakeLockGuidance(wakeLock.state);
+  void wakeLock.request();
+
   const autoReconnect = createViewerAutoReconnectController({
     config: runtimeConfig,
     video,
@@ -651,10 +669,12 @@ export function renderViewer(
     batteryStatusCleanup?.();
     batteryStatusCleanup = undefined;
     autoReconnect.disconnect();
+    void wakeLock.dispose();
     options.onBack?.();
   });
 
   async function reconnectFromStoredPair(pairId: string): Promise<void> {
+    await wakeLock.request();
     const pairedCamera = readPairedCameras(pairStorage).find(
       (camera) => camera.pairId === pairId
     );
@@ -687,6 +707,7 @@ export function renderViewer(
         return;
       }
 
+      await wakeLock.request();
       autoReconnect.disconnect();
       session = await startViewerSession({
         config: runtimeConfig,
@@ -708,6 +729,7 @@ export function renderViewer(
 
   disconnect.addEventListener("click", () => {
     autoReconnect.disconnect();
+    void wakeLock.release();
   });
 
   if (reconnectPairId) {

@@ -25,11 +25,13 @@ import {
   type StoredCameraPairing
 } from "./paired-cameras.js";
 import {
+  createWakeLockController,
   describeCameraError,
+  formatWakeLockGuidance,
   releaseWakeLock,
-  requestWakeLock,
   stopStream,
   type StoppableMediaStream,
+  type WakeLockController,
   type WakeLockSentinelLike
 } from "./safety.js";
 import { SignalingClient } from "./signaling-client.js";
@@ -132,6 +134,7 @@ export function buildCameraShellMarkup(connectionLabel: string): string {
 
       <p class="ready-card" id="status" role="status">Starting camera...</p>
       <p class="battery-status session-battery-status" id="battery-status" data-battery-status>Battery unavailable</p>
+      <p class="wake-lock-guidance" id="wake-lock-guidance">Keep this phone open</p>
       <p class="mode-pill" id="connection-mode">${connectionLabel}</p>
       <button class="danger full-action" id="stop" type="button">Stop</button>
     </section>
@@ -217,14 +220,23 @@ export async function renderCamera(
   const stop = app.querySelector<HTMLButtonElement>("#stop")!;
   const back = app.querySelector<HTMLButtonElement>("[data-nav-back]")!;
   const batteryStatus = app.querySelector<HTMLParagraphElement>("[data-battery-status]")!;
+  const wakeLockGuidance =
+    app.querySelector<HTMLParagraphElement>("#wake-lock-guidance")!;
 
   let stream: MediaStream | undefined;
   let signaling: SignalingClient | undefined;
-  let wakeLock: WakeLockSentinelLike | undefined;
+  let wakeLock: WakeLockController | undefined;
   let peerController: PeerController | undefined;
   let batteryStatusCleanup: (() => void) | undefined;
   let roomId = "";
   let closed = false;
+
+  wakeLock = createWakeLockController({
+    onState: (state) => {
+      wakeLockGuidance.textContent = formatWakeLockGuidance(state);
+    }
+  });
+  wakeLockGuidance.textContent = formatWakeLockGuidance(wakeLock.state);
 
   void watchBatterySnapshot(navigator, (snapshot) => {
     batteryStatus.textContent = formatBatterySnapshot(snapshot);
@@ -287,7 +299,7 @@ export async function renderCamera(
   });
 
   try {
-    wakeLock = await requestWakeLock();
+    await wakeLock.request();
     if (await stopIfClosed()) return;
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment" },
