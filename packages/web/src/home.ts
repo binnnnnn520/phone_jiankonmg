@@ -1,6 +1,22 @@
 import type { ConnectionMode, ViewerPairedCamera } from "@phone-monitor/shared";
+import {
+  filterPairedCameras,
+  sortPairedCameras,
+  type PairedCameraStatus,
+  type PairedCameraStatusLookup
+} from "./paired-cameras.js";
 
 export type HomeTab = "home" | "cameras" | "me";
+
+export interface HomeMarkupOptions {
+  pairStatuses?: PairedCameraStatusLookup;
+  cameraSearchQuery?: string;
+}
+
+interface PairedCameraListOptions {
+  pairStatuses?: PairedCameraStatusLookup;
+  cameraSearchQuery?: string;
+}
 
 function buildModeButton(
   mode: ConnectionMode,
@@ -80,7 +96,10 @@ function buildActionCards(): string {
   `;
 }
 
-function buildPairedCameraList(pairedCameras: ViewerPairedCamera[]): string {
+export function buildPairedCameraList(
+  pairedCameras: ViewerPairedCamera[],
+  options: PairedCameraListOptions = {}
+): string {
   if (pairedCameras.length === 0) {
     return `
       <section class="paired-camera-empty">
@@ -91,19 +110,68 @@ function buildPairedCameraList(pairedCameras: ViewerPairedCamera[]): string {
   }
 
   return `
+      ${buildCameraSearch(options.cameraSearchQuery ?? "")}
+      <div data-paired-camera-list-region>
+        ${buildPairedCameraListBody(pairedCameras, options)}
+      </div>
+  `;
+}
+
+export function buildPairedCameraListBody(
+  pairedCameras: ViewerPairedCamera[],
+  options: PairedCameraListOptions = {}
+): string {
+  const sortedCameras = sortPairedCameras(pairedCameras, options.pairStatuses);
+  const filteredCameras = filterPairedCameras(
+    sortedCameras,
+    options.cameraSearchQuery ?? ""
+  );
+
+  if (filteredCameras.length === 0) {
+    return `
+      <section class="paired-camera-empty" aria-live="polite">
+        <h2>No matching cameras</h2>
+        <p>Try another saved camera name.</p>
+      </section>
+    `;
+  }
+
+  return `
       <section class="paired-camera-list" aria-label="Paired cameras">
-        ${pairedCameras.map(buildPairedCameraItem).join("")}
+        ${filteredCameras
+          .map((camera) =>
+            buildPairedCameraItem(
+              camera,
+              options.pairStatuses?.[camera.pairId] ?? "checking"
+            )
+          )
+          .join("")}
       </section>
   `;
 }
 
-function buildPairedCameraItem(camera: ViewerPairedCamera): string {
+function buildCameraSearch(query: string): string {
+  return `
+      <section class="paired-camera-controls" aria-label="Camera list controls">
+        <label class="camera-search-field">
+          <span>Search cameras</span>
+          <input type="search" value="${escapeHtml(query)}" autocomplete="off" data-camera-search />
+        </label>
+      </section>
+  `;
+}
+
+function buildPairedCameraItem(
+  camera: ViewerPairedCamera,
+  status: PairedCameraStatus
+): string {
+  const statusLabel = formatPairStatus(status);
   return `
         <article class="paired-camera-card">
           <div>
             <h2>${escapeHtml(camera.displayName)}</h2>
             <p>Last connected ${formatLastConnected(camera.lastConnectedAt)}</p>
-            <p class="pair-status" data-pair-status="${escapeHtml(camera.pairId)}">Checking</p>
+            <p class="pair-status pair-status-${status}" data-pair-status="${escapeHtml(camera.pairId)}">${statusLabel}</p>
           </div>
           <div class="paired-camera-actions">
             <button class="ghost-outline" type="button" data-reconnect-pair="${escapeHtml(camera.pairId)}">Reconnect</button>
@@ -178,12 +246,13 @@ function buildTabContent(
   selectedMode: ConnectionMode,
   activeTab: HomeTab,
   pairedCameras: ViewerPairedCamera[],
-  cameraDisplayName: string
+  cameraDisplayName: string,
+  options: HomeMarkupOptions = {}
 ): string {
   if (activeTab === "cameras") {
     return `
       ${buildHomeHeader("Cameras", "Choose how this phone participates.")}
-      ${buildPairedCameraList(pairedCameras)}
+      ${buildPairedCameraList(pairedCameras, options)}
       ${buildActionCards()}
     `;
   }
@@ -216,12 +285,19 @@ export function buildHomeMarkup(
   selectedMode: ConnectionMode = "remote",
   activeTab: HomeTab = "home",
   pairedCameras: ViewerPairedCamera[] = [],
-  cameraDisplayName = "This phone camera"
+  cameraDisplayName = "This phone camera",
+  options: HomeMarkupOptions = {}
 ): string {
   return `
     <section class="app-shell home-shell light-monitor-shell">
       <div class="home-tab-content" data-active-home-tab="${activeTab}">
-        ${buildTabContent(selectedMode, activeTab, pairedCameras, cameraDisplayName)}
+        ${buildTabContent(
+          selectedMode,
+          activeTab,
+          pairedCameras,
+          cameraDisplayName,
+          options
+        )}
       </div>
       ${buildBottomNav(activeTab)}
     </section>
@@ -231,6 +307,12 @@ export function buildHomeMarkup(
 function formatLastConnected(timestamp: number): string {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return "recently";
   return "recently";
+}
+
+function formatPairStatus(status: PairedCameraStatus): string {
+  if (status === "live") return "Live";
+  if (status === "offline") return "Offline";
+  return "Checking";
 }
 
 function escapeHtml(value: string): string {

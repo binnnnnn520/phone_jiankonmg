@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ViewerPairedCamera } from "@phone-monitor/shared";
 import { buildHomeMarkup } from "../src/home.js";
 
 test("home screen presents the two-phone approved UI copy", () => {
@@ -118,6 +119,62 @@ test("cameras tab renders paired camera reconnect and remove actions", () => {
   assert.match(markup, /Reconnect/);
 });
 
+test("cameras tab renders saved cameras live-first, then newest connection", () => {
+  const oldLive = buildCamera("pair-old-live", "Old live", 1000);
+  const newOffline = buildCamera("pair-new-offline", "New offline", 4000);
+  const newLive = buildCamera("pair-new-live", "New live", 3000);
+  const markup = buildHomeMarkup(
+    "remote",
+    "cameras",
+    [newOffline, oldLive, newLive],
+    "This phone camera",
+    {
+      pairStatuses: {
+        "pair-old-live": "live",
+        "pair-new-live": "live",
+        "pair-new-offline": "offline"
+      }
+    }
+  );
+
+  assert.ok(markup.indexOf("New live") < markup.indexOf("Old live"));
+  assert.ok(markup.indexOf("Old live") < markup.indexOf("New offline"));
+  assert.match(markup, /data-pair-status="pair-new-live"[^>]*>Live</);
+  assert.match(markup, /data-pair-status="pair-new-offline"[^>]*>Offline</);
+});
+
+test("cameras tab includes compact search and filters by display name", () => {
+  const markup = buildHomeMarkup(
+    "remote",
+    "cameras",
+    [
+      buildCamera("pair-front", "Front door", 1000),
+      buildCamera("pair-nursery", "Nursery", 2000)
+    ],
+    "This phone camera",
+    { cameraSearchQuery: "front" }
+  );
+
+  assert.match(markup, /type="search"/);
+  assert.match(markup, /data-camera-search/);
+  assert.match(markup, /value="front"/);
+  assert.match(markup, /Front door/);
+  assert.doesNotMatch(markup, /Nursery/);
+});
+
+test("cameras tab shows a no matching cameras state for empty search results", () => {
+  const markup = buildHomeMarkup(
+    "remote",
+    "cameras",
+    [buildCamera("pair-front", "Front door", 1000)],
+    "This phone camera",
+    { cameraSearchQuery: "garage" }
+  );
+
+  assert.match(markup, /No matching cameras/);
+  assert.doesNotMatch(markup, /data-reconnect-pair="pair-front"/);
+});
+
 test("cameras tab renders an empty paired camera state", () => {
   const markup = buildHomeMarkup("remote", "cameras", []);
 
@@ -132,3 +189,18 @@ test("home screen does not expose infrastructure setup terms", () => {
     assert.equal(markup.includes(term), false, `unexpected term: ${term}`);
   }
 });
+
+function buildCamera(
+  pairId: string,
+  displayName: string,
+  lastConnectedAt: number
+): ViewerPairedCamera {
+  return {
+    pairId,
+    cameraDeviceId: `camera-${pairId}`,
+    viewerDeviceId: "viewer-device",
+    viewerPairToken: `viewer-token-${pairId}`,
+    displayName,
+    lastConnectedAt
+  };
+}

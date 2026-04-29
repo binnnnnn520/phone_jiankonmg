@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext } from "@playwright/test";
 
 test("camera page creates a visible monitoring session", async ({ page }) => {
   const roomResponsePromise = page.waitForResponse((response) => {
@@ -212,6 +212,64 @@ test("me tab camera name is used for the next camera pairing", async ({ page }) 
   } finally {
     await viewer.close().catch(() => undefined);
     await dashboard.close().catch(() => undefined);
+  }
+});
+
+test("camera list search filters paired cameras by name", async ({ browser, baseURL }) => {
+  const appUrl =
+    process.env.PHONE_MONITOR_E2E_BASE_URL ?? baseURL ?? "http://localhost:5173";
+  const cameraContexts: BrowserContext[] = [];
+  const viewerContext = await browser.newContext({ permissions: ["camera"] });
+  const viewer = await viewerContext.newPage();
+
+  async function startNamedCamera(displayName: string): Promise<{
+    pin: string;
+    roomId: string;
+  }> {
+    const context = await browser.newContext({ permissions: ["camera"] });
+    cameraContexts.push(context);
+    const camera = await context.newPage();
+    await camera.goto(`${appUrl}/?tab=me`);
+    await camera.getByRole("textbox", { name: "Camera name" }).fill(displayName);
+    await camera.getByRole("button", { name: "Save name" }).click();
+
+    const roomResponsePromise = camera.waitForResponse((response) => {
+      return (
+        response.url().endsWith("/rooms") &&
+        response.request().method() === "POST"
+      );
+    });
+    await camera.goto(`${appUrl}/?mode=camera`);
+    const roomResponse = await roomResponsePromise;
+    return (await roomResponse.json()) as { pin: string; roomId: string };
+  }
+
+  async function connectViewer(room: { pin: string; roomId: string }): Promise<void> {
+    await viewer.goto(`${appUrl}/?room=${encodeURIComponent(room.roomId)}`);
+    await viewer.getByLabel("PIN").fill(room.pin);
+    await viewer.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(viewer.getByRole("status")).toHaveText(
+      /connecting|live|using relay connection/i
+    );
+  }
+
+  try {
+    await connectViewer(await startNamedCamera("Front door"));
+    await connectViewer(await startNamedCamera("Nursery"));
+
+    await viewer.goto(`${appUrl}/?tab=cameras`);
+    await expect(viewer.getByText("Front door")).toBeVisible();
+    await expect(viewer.getByText("Nursery")).toBeVisible();
+
+    await viewer.getByRole("searchbox", { name: "Search cameras" }).fill("nur");
+
+    await expect(viewer.getByText("Nursery")).toBeVisible();
+    await expect(viewer.getByText("Front door")).toBeHidden();
+  } finally {
+    await viewerContext.close().catch(() => undefined);
+    await Promise.all(
+      cameraContexts.map((context) => context.close().catch(() => undefined))
+    );
   }
 });
 

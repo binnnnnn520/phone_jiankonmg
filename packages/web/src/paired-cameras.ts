@@ -6,6 +6,9 @@ export const CAMERA_PAIRING_STORAGE_KEY = "phone-monitor.cameraPairing";
 export const CAMERA_DISPLAY_NAME_STORAGE_KEY = "phone-monitor.cameraDisplayName";
 export const DEFAULT_CAMERA_DISPLAY_NAME = "This phone camera";
 
+export type PairedCameraStatus = "live" | "offline" | "checking";
+export type PairedCameraStatusLookup = Partial<Record<string, PairedCameraStatus>>;
+
 interface StorageLike {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
@@ -65,6 +68,38 @@ export function clearPairedCamera(
   storage?.setItem(PAIRED_CAMERAS_STORAGE_KEY, JSON.stringify(next));
 }
 
+export function sortPairedCameras(
+  cameras: ViewerPairedCamera[],
+  statuses: PairedCameraStatusLookup = {}
+): ViewerPairedCamera[] {
+  return [...cameras].sort((left, right) => {
+    const leftLive = statuses[left.pairId] === "live";
+    const rightLive = statuses[right.pairId] === "live";
+    if (leftLive !== rightLive) return leftLive ? -1 : 1;
+
+    const lastConnectedDelta =
+      safeTimestamp(right.lastConnectedAt) - safeTimestamp(left.lastConnectedAt);
+    if (lastConnectedDelta !== 0) return lastConnectedDelta;
+
+    return (
+      left.displayName.localeCompare(right.displayName) ||
+      left.pairId.localeCompare(right.pairId)
+    );
+  });
+}
+
+export function filterPairedCameras(
+  cameras: ViewerPairedCamera[],
+  query: string
+): ViewerPairedCamera[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return [...cameras];
+
+  return cameras.filter((camera) =>
+    camera.displayName.toLocaleLowerCase().includes(normalizedQuery)
+  );
+}
+
 export function readCameraPairing(
   storage: StorageLike | undefined
 ): StoredCameraPairing | undefined {
@@ -113,6 +148,10 @@ function randomId(): string {
   const values = new Uint8Array(16);
   crypto.getRandomValues(values);
   return Array.from(values, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function safeTimestamp(timestamp: number): number {
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function isViewerPairedCamera(value: unknown): value is ViewerPairedCamera {
