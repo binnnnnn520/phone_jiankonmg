@@ -261,6 +261,9 @@ export class RoomStore {
         existingPair.cameraPairTokenSalt
       )
     ) {
+      if (request.displayName?.trim()) {
+        existingPair.displayName = request.displayName.trim();
+      }
       existingPair.lastSeenAt = this.params.now();
       this.persistPairs();
       return {

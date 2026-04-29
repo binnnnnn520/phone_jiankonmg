@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CAMERA_PAIRING_STORAGE_KEY,
+  CAMERA_DISPLAY_NAME_STORAGE_KEY,
   PAIRED_CAMERAS_STORAGE_KEY,
   clearPairedCamera,
   getOrCreateDeviceId,
+  readCameraDisplayName,
   readCameraPairing,
   readPairedCameras,
+  saveCameraDisplayName,
   saveCameraPairing,
   upsertPairedCamera
 } from "../src/paired-cameras.js";
@@ -90,4 +93,30 @@ test("camera pairing storage can be saved and cleared", () => {
 
   clearPairedCamera(storage, "pair-1");
   assert.deepEqual(readPairedCameras(storage), []);
+});
+
+test("camera display name can be saved before or after pairing", () => {
+  const storage = new MemoryStorage();
+
+  assert.equal(readCameraDisplayName(storage), "This phone camera");
+
+  saveCameraDisplayName(storage, "Kitchen phone");
+  assert.equal(readCameraDisplayName(storage), "Kitchen phone");
+  assert.equal(storage.getItem(CAMERA_DISPLAY_NAME_STORAGE_KEY), "Kitchen phone");
+
+  saveCameraPairing(storage, {
+    pairId: "pair-1",
+    cameraDeviceId: "camera-1",
+    displayName: "Old name",
+    cameraPairToken: "camera-token"
+  });
+  saveCameraDisplayName(storage, "Front door");
+
+  assert.equal(readCameraDisplayName(storage), "Front door");
+  assert.deepEqual(readCameraPairing(storage), {
+    pairId: "pair-1",
+    cameraDeviceId: "camera-1",
+    displayName: "Front door",
+    cameraPairToken: "camera-token"
+  });
 });

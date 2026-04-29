@@ -3,6 +3,8 @@ import type { CameraPairingInfo, ViewerPairedCamera } from "@phone-monitor/share
 export const DEVICE_ID_STORAGE_KEY = "phone-monitor.deviceId";
 export const PAIRED_CAMERAS_STORAGE_KEY = "phone-monitor.pairedCameras";
 export const CAMERA_PAIRING_STORAGE_KEY = "phone-monitor.cameraPairing";
+export const CAMERA_DISPLAY_NAME_STORAGE_KEY = "phone-monitor.cameraDisplayName";
+export const DEFAULT_CAMERA_DISPLAY_NAME = "This phone camera";
 
 interface StorageLike {
   getItem: (key: string) => string | null;
@@ -76,12 +78,35 @@ export function readCameraPairing(
   }
 }
 
+export function readCameraDisplayName(storage: StorageLike | undefined): string {
+  const stored = storage?.getItem(CAMERA_DISPLAY_NAME_STORAGE_KEY)?.trim();
+  if (stored) return stored;
+  return readCameraPairing(storage)?.displayName || DEFAULT_CAMERA_DISPLAY_NAME;
+}
+
+export function saveCameraDisplayName(
+  storage: StorageLike | undefined,
+  displayName: string
+): string {
+  const next = displayName.trim() || DEFAULT_CAMERA_DISPLAY_NAME;
+  storage?.setItem(CAMERA_DISPLAY_NAME_STORAGE_KEY, next);
+  const pairing = readCameraPairing(storage);
+  if (pairing) {
+    storage?.setItem(
+      CAMERA_PAIRING_STORAGE_KEY,
+      JSON.stringify({ ...pairing, displayName: next })
+    );
+  }
+  return next;
+}
+
 export function saveCameraPairing(
   storage: StorageLike | undefined,
   pairing: CameraPairingInfo
 ): void {
   if (!pairing.cameraPairToken) return;
   storage?.setItem(CAMERA_PAIRING_STORAGE_KEY, JSON.stringify(pairing));
+  storage?.setItem(CAMERA_DISPLAY_NAME_STORAGE_KEY, pairing.displayName);
 }
 
 function randomId(): string {

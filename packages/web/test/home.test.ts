@@ -80,6 +80,14 @@ test("me tab renders saved connection counts", () => {
   assert.match(markup, /data-connection-count="offline"[^>]*>Checking<\/strong>/);
 });
 
+test("me tab renders an editable camera name", () => {
+  const markup = buildHomeMarkup("remote", "me", [], "Kitchen phone");
+
+  assert.match(markup, /Camera name/);
+  assert.match(markup, /value="Kitchen phone"/);
+  assert.match(markup, /data-camera-name-save/);
+});
+
 test("cameras tab renders paired camera reconnect and remove actions", () => {
   const markup = buildHomeMarkup("remote", "cameras", [
     {

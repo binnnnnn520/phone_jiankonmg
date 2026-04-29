@@ -423,7 +423,7 @@ h1 {
 }
 
 .connection-summary-grid span {
-  min-height: 70px;
+  min-height: 62px;
   display: grid;
   align-content: center;
   gap: 4px;
@@ -443,6 +443,50 @@ h1 {
   color: var(--teal-ink);
   font-size: 1.35rem;
   line-height: 1;
+}
+
+.camera-name-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: var(--soft-shadow);
+}
+
+.camera-name-card p {
+  margin: 0;
+}
+
+.camera-name-card p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.camera-name-field {
+  display: grid;
+  gap: 6px;
+}
+
+.camera-name-field span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.camera-name-status {
+  min-height: 1rem;
+  color: var(--teal);
+  grid-column: 1 / -1;
+  font-weight: 800;
+}
+
+.camera-name-status:empty {
+  display: none;
 }
 
 .connection-title {

@@ -155,10 +155,24 @@ function buildConnectionSummary(pairedCameras: ViewerPairedCamera[]): string {
   `;
 }
 
+function buildCameraNameEditor(cameraDisplayName: string): string {
+  return `
+      <section class="camera-name-card" aria-label="Camera name settings">
+        <label class="camera-name-field">
+          <span>Camera name</span>
+          <input type="text" value="${escapeHtml(cameraDisplayName)}" maxlength="40" autocomplete="off" data-camera-name-input />
+        </label>
+        <button class="ghost-outline" type="button" data-camera-name-save>Save name</button>
+        <p class="camera-name-status" role="status" data-camera-name-status></p>
+      </section>
+  `;
+}
+
 function buildTabContent(
   selectedMode: ConnectionMode,
   activeTab: HomeTab,
-  pairedCameras: ViewerPairedCamera[]
+  pairedCameras: ViewerPairedCamera[],
+  cameraDisplayName: string
 ): string {
   if (activeTab === "cameras") {
     return `
@@ -172,6 +186,7 @@ function buildTabContent(
     return `
       ${buildHomeHeader("Me", "Personal settings for this phone.")}
       ${buildConnectionSummary(pairedCameras)}
+      ${buildCameraNameEditor(cameraDisplayName)}
       ${buildConnectionPicker(selectedMode)}
       <p class="home-note">Keep both phones charged and on the app.</p>
     `;
@@ -193,12 +208,13 @@ export function parseHomeTab(value: string | null | undefined): HomeTab {
 export function buildHomeMarkup(
   selectedMode: ConnectionMode = "remote",
   activeTab: HomeTab = "home",
-  pairedCameras: ViewerPairedCamera[] = []
+  pairedCameras: ViewerPairedCamera[] = [],
+  cameraDisplayName = "This phone camera"
 ): string {
   return `
     <section class="app-shell home-shell light-monitor-shell">
       <div class="home-tab-content" data-active-home-tab="${activeTab}">
-        ${buildTabContent(selectedMode, activeTab, pairedCameras)}
+        ${buildTabContent(selectedMode, activeTab, pairedCameras, cameraDisplayName)}
       </div>
       ${buildBottomNav(activeTab)}
     </section>

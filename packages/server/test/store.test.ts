@@ -80,6 +80,29 @@ test("persists paired camera credentials across store instances", () => {
   }
 });
 
+test("renames an existing paired camera when the camera rejoins", () => {
+  const store = createStore();
+  const firstRoom = store.createRoom({
+    cameraDeviceId: "camera-device-1",
+    displayName: "Old name"
+  });
+  const cameraPairToken = firstRoom.cameraPairing.cameraPairToken;
+  assert.ok(cameraPairToken);
+
+  const secondRoom = store.createRoom({
+    pairId: firstRoom.cameraPairing.pairId,
+    cameraDeviceId: firstRoom.cameraPairing.cameraDeviceId,
+    cameraPairToken,
+    displayName: "Kitchen phone"
+  });
+  const verified = store.verifyPin(secondRoom.roomId, secondRoom.pin, {
+    viewerDeviceId: "viewer-device-1"
+  });
+
+  assert.equal(secondRoom.cameraPairing.displayName, "Kitchen phone");
+  assert.equal(verified.pairedCamera.displayName, "Kitchen phone");
+});
+
 test("verifies a correct PIN and consumes a viewer token once", () => {
   const store = createStore();
   const room = store.createRoom();

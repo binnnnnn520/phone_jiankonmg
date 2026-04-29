@@ -14,17 +14,28 @@ import { buildHomeMarkup, parseHomeTab, type HomeTab } from "./home.js";
 import {
   browserPairStorage,
   clearPairedCamera,
-  readPairedCameras
+  readCameraDisplayName,
+  readPairedCameras,
+  saveCameraDisplayName
 } from "./paired-cameras.js";
 import { resolveRoute } from "./routes.js";
 import { renderViewer } from "./viewer.js";
 
 const appRoot = document.querySelector<HTMLDivElement>("#app")!;
 if (!appRoot) throw new Error("Missing app root");
+const PAIR_STATUS_REFRESH_MS = 5000;
+let pairStatusRefreshTimer: number | undefined;
 
 function navigate(search: string): void {
   window.history.pushState({}, "", search);
   renderApp();
+}
+
+function stopPairStatusRefresh(): void {
+  if (pairStatusRefreshTimer) {
+    window.clearInterval(pairStatusRefreshTimer);
+    pairStatusRefreshTimer = undefined;
+  }
 }
 
 function selectedConnectionMode(): ConnectionMode {
@@ -106,13 +117,15 @@ function updateConnectionSummary(liveCount: number, offlineCount: number): void 
 }
 
 function renderHome(): void {
+  stopPairStatusRefresh();
   const activeTab = selectedHomeTab();
   const pairStorage = browserPairStorage();
   const pairedCameras = readPairedCameras(pairStorage);
   appRoot.innerHTML = buildHomeMarkup(
     selectedConnectionMode(),
     activeTab,
-    pairedCameras
+    pairedCameras,
+    readCameraDisplayName(pairStorage)
   );
   appRoot
     .querySelectorAll<HTMLButtonElement>("[data-connection-mode]")
@@ -147,6 +160,15 @@ function renderHome(): void {
     });
   });
   appRoot
+    .querySelector<HTMLButtonElement>("[data-camera-name-save]")
+    ?.addEventListener("click", () => {
+      const input = appRoot.querySelector<HTMLInputElement>("[data-camera-name-input]");
+      const status = appRoot.querySelector<HTMLElement>("[data-camera-name-status]");
+      const savedName = saveCameraDisplayName(pairStorage, input?.value ?? "");
+      if (input) input.value = savedName;
+      if (status) status.textContent = "Name saved";
+    });
+  appRoot
     .querySelector("#camera")
     ?.addEventListener("click", () => navigate(routeWithConnectionMode("camera")));
   appRoot
@@ -154,10 +176,15 @@ function renderHome(): void {
     ?.addEventListener("click", () => navigate(routeWithConnectionMode("viewer")));
   if (activeTab === "cameras" || activeTab === "me") {
     refreshPairStatuses(pairedCameras);
+    pairStatusRefreshTimer = window.setInterval(
+      () => refreshPairStatuses(pairedCameras),
+      PAIR_STATUS_REFRESH_MS
+    );
   }
 }
 
 function renderApp(): void {
+  stopPairStatusRefresh();
   const route = resolveRoute(new URLSearchParams(window.location.search));
   if (route === "camera") {
     void renderCamera(appRoot, { onBack: () => navigate("/") });

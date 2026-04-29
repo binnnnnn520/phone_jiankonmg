@@ -18,7 +18,8 @@ type CameraModule = typeof import("../src/camera.js") & {
       cameraDeviceId: string;
       displayName: string;
       cameraPairToken: string;
-    }
+    },
+    displayName?: string
   ) => {
     cameraDeviceId: string;
     displayName: string;
@@ -100,6 +101,38 @@ test("buildCreateRoomRequest reuses saved camera pairing credentials", async () 
       displayName: "Front door",
       cameraPairToken: "camera-pair-token"
     }),
+    {
+      cameraDeviceId: "camera-device-1",
+      displayName: "Front door",
+      pairId: "pair-1",
+      cameraPairToken: "camera-pair-token"
+    }
+  );
+});
+
+test("buildCreateRoomRequest uses the editable camera name", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCreateRoomRequest, "function");
+
+  assert.deepEqual(
+    camera.buildCreateRoomRequest!("device-1", undefined, "Kitchen phone"),
+    {
+      cameraDeviceId: "device-1",
+      displayName: "Kitchen phone"
+    }
+  );
+
+  assert.deepEqual(
+    camera.buildCreateRoomRequest!(
+      "device-1",
+      {
+        pairId: "pair-1",
+        cameraDeviceId: "camera-device-1",
+        displayName: "Old name",
+        cameraPairToken: "camera-pair-token"
+      },
+      "Front door"
+    ),
     {
       cameraDeviceId: "camera-device-1",
       displayName: "Front door",

@@ -15,6 +15,7 @@ import { loadClientConfig } from "./config.js";
 import {
   browserPairStorage,
   getOrCreateDeviceId,
+  readCameraDisplayName,
   readCameraPairing,
   saveCameraPairing,
   type StoredCameraPairing
@@ -75,12 +76,14 @@ export function buildCameraJoinMessage(
 
 export function buildCreateRoomRequest(
   deviceId: string,
-  pairing?: StoredCameraPairing
+  pairing?: StoredCameraPairing,
+  displayName?: string
 ): CreateRoomRequest {
+  const cameraName = displayName?.trim();
   if (pairing) {
     return {
       cameraDeviceId: pairing.cameraDeviceId,
-      displayName: pairing.displayName,
+      displayName: cameraName || pairing.displayName,
       pairId: pairing.pairId,
       cameraPairToken: pairing.cameraPairToken
     };
@@ -88,7 +91,7 @@ export function buildCreateRoomRequest(
 
   return {
     cameraDeviceId: deviceId,
-    displayName: "This phone camera"
+    displayName: cameraName || "This phone camera"
   };
 }
 
@@ -192,6 +195,7 @@ export async function renderCamera(
   const pairStorage = browserPairStorage();
   const deviceId = getOrCreateDeviceId(pairStorage);
   const cameraPairing = readCameraPairing(pairStorage);
+  const cameraDisplayName = readCameraDisplayName(pairStorage);
   const preferredConnectionMode = resolvePreferredConnectionMode({
     params: new URLSearchParams(window.location.search),
     storage: browserConnectionModeStorage(),
@@ -275,7 +279,7 @@ export async function renderCamera(
     const room: CreateRoomResponse = await createRoom(
       runtimeConfig,
       fetch,
-      buildCreateRoomRequest(deviceId, cameraPairing)
+      buildCreateRoomRequest(deviceId, cameraPairing, cameraDisplayName)
     );
     if (await stopIfClosed()) return;
     saveCameraPairing(pairStorage, room.cameraPairing);
