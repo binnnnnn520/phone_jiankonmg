@@ -10,13 +10,20 @@ import {
   storeConnectionMode
 } from "./connection-mode.js";
 import { loadClientConfig } from "./config.js";
-import { buildHomeMarkup, parseHomeTab, type HomeTab } from "./home.js";
+import {
+  buildHomeMarkup,
+  buildPairedCameraListBody,
+  parseHomeTab,
+  type HomeTab
+} from "./home.js";
 import {
   browserPairStorage,
   clearPairedCamera,
   readCameraDisplayName,
   readPairedCameras,
-  saveCameraDisplayName
+  saveCameraDisplayName,
+  type PairedCameraStatus,
+  type PairedCameraStatusLookup
 } from "./paired-cameras.js";
 import { resolveRoute } from "./routes.js";
 import { renderViewer } from "./viewer.js";
@@ -25,6 +32,8 @@ const appRoot = document.querySelector<HTMLDivElement>("#app")!;
 if (!appRoot) throw new Error("Missing app root");
 const PAIR_STATUS_REFRESH_MS = 5000;
 let pairStatusRefreshTimer: number | undefined;
+const pairStatusByPairId: PairedCameraStatusLookup = {};
+let cameraSearchQuery = "";
 
 function navigate(search: string): void {
   window.history.pushState({}, "", search);
@@ -69,7 +78,10 @@ function routeWithHomeTab(tab: HomeTab): string {
   return `/?${new URLSearchParams({ tab }).toString()}`;
 }
 
-function refreshPairStatuses(pairedCameras: ViewerPairedCamera[]): void {
+function refreshPairStatuses(
+  pairedCameras: ViewerPairedCamera[],
+  options: { rerenderCameraList?: boolean } = {}
+): void {
   if (pairedCameras.length === 0) {
     updateConnectionSummary(0, 0);
     return;
@@ -79,25 +91,33 @@ function refreshPairStatuses(pairedCameras: ViewerPairedCamera[]): void {
     pairedCameras.map((camera) =>
       getPairStatus(config, camera)
       .then((status) => {
-        updatePairStatus(camera.pairId, status.status === "live" ? "Live" : "Offline");
-        return status.status;
+        const pairStatus: PairedCameraStatus =
+          status.status === "live" ? "live" : "offline";
+        pairStatusByPairId[camera.pairId] = pairStatus;
+        updatePairStatus(camera.pairId, pairStatus);
+        return pairStatus;
       })
       .catch(() => {
-        updatePairStatus(camera.pairId, "Offline");
+        pairStatusByPairId[camera.pairId] = "offline";
+        updatePairStatus(camera.pairId, "offline");
         return "offline" as const;
       })
     )
   ).then((statuses) => {
     const liveCount = statuses.filter((status) => status === "live").length;
     updateConnectionSummary(liveCount, statuses.length - liveCount);
+    if (options.rerenderCameraList) renderPairedCameraList(browserPairStorage());
   });
 }
 
-function updatePairStatus(pairId: string, label: string): void {
-  const status = Array.from(
+function updatePairStatus(pairId: string, status: PairedCameraStatus): void {
+  const element = Array.from(
     appRoot.querySelectorAll<HTMLElement>("[data-pair-status]")
   ).find((element) => element.dataset.pairStatus === pairId);
-  if (status) status.textContent = label;
+  if (!element) return;
+
+  element.textContent = pairStatusLabel(status);
+  element.className = `pair-status pair-status-${status}`;
 }
 
 function updateConnectionSummary(liveCount: number, offlineCount: number): void {
@@ -116,6 +136,42 @@ function updateConnectionSummary(liveCount: number, offlineCount: number): void 
   }
 }
 
+function pairStatusLabel(status: PairedCameraStatus): string {
+  if (status === "live") return "Live";
+  if (status === "offline") return "Offline";
+  return "Checking";
+}
+
+function bindPairedCameraActions(pairStorage: Storage | undefined): void {
+  appRoot
+    .querySelectorAll<HTMLButtonElement>("[data-reconnect-pair]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const pairId = button.dataset.reconnectPair;
+        if (pairId) navigate(routeWithPairReconnect(pairId));
+      });
+    });
+  appRoot.querySelectorAll<HTMLButtonElement>("[data-remove-pair]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const pairId = button.dataset.removePair;
+      if (!pairId) return;
+      clearPairedCamera(pairStorage, pairId);
+      renderHome();
+    });
+  });
+}
+
+function renderPairedCameraList(pairStorage: Storage | undefined): void {
+  const region = appRoot.querySelector<HTMLElement>("[data-paired-camera-list-region]");
+  if (!region) return;
+
+  region.innerHTML = buildPairedCameraListBody(readPairedCameras(pairStorage), {
+    pairStatuses: pairStatusByPairId,
+    cameraSearchQuery
+  });
+  bindPairedCameraActions(pairStorage);
+}
+
 function renderHome(): void {
   stopPairStatusRefresh();
   const activeTab = selectedHomeTab();
@@ -125,7 +181,11 @@ function renderHome(): void {
     selectedConnectionMode(),
     activeTab,
     pairedCameras,
-    readCameraDisplayName(pairStorage)
+    readCameraDisplayName(pairStorage),
+    {
+      pairStatuses: pairStatusByPairId,
+      cameraSearchQuery
+    }
   );
   appRoot
     .querySelectorAll<HTMLButtonElement>("[data-connection-mode]")
@@ -143,22 +203,14 @@ function renderHome(): void {
       navigate(routeWithHomeTab(tab));
     });
   });
-  appRoot
-    .querySelectorAll<HTMLButtonElement>("[data-reconnect-pair]")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        const pairId = button.dataset.reconnectPair;
-        if (pairId) navigate(routeWithPairReconnect(pairId));
-      });
-    });
-  appRoot.querySelectorAll<HTMLButtonElement>("[data-remove-pair]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const pairId = button.dataset.removePair;
-      if (!pairId) return;
-      clearPairedCamera(pairStorage, pairId);
-      renderHome();
-    });
-  });
+  bindPairedCameraActions(pairStorage);
+  appRoot.querySelector<HTMLInputElement>("[data-camera-search]")?.addEventListener(
+    "input",
+    (event) => {
+      cameraSearchQuery = (event.currentTarget as HTMLInputElement).value;
+      renderPairedCameraList(pairStorage);
+    }
+  );
   appRoot
     .querySelector<HTMLButtonElement>("[data-camera-name-save]")
     ?.addEventListener("click", () => {
@@ -175,9 +227,12 @@ function renderHome(): void {
     .querySelector("#viewer")
     ?.addEventListener("click", () => navigate(routeWithConnectionMode("viewer")));
   if (activeTab === "cameras" || activeTab === "me") {
-    refreshPairStatuses(pairedCameras);
+    refreshPairStatuses(pairedCameras, { rerenderCameraList: activeTab === "cameras" });
     pairStatusRefreshTimer = window.setInterval(
-      () => refreshPairStatuses(pairedCameras),
+      () =>
+        refreshPairStatuses(pairedCameras, {
+          rerenderCameraList: selectedHomeTab() === "cameras"
+        }),
       PAIR_STATUS_REFRESH_MS
     );
   }
