@@ -19,6 +19,12 @@ import {
   saveCameraDisplayName
 } from "./paired-cameras.js";
 import { resolveRoute } from "./routes.js";
+import {
+  browserVideoQualityStorage,
+  parseVideoQuality,
+  readVideoQuality,
+  saveVideoQuality
+} from "./video-quality.js";
 import { renderViewer } from "./viewer.js";
 
 const appRoot = document.querySelector<HTMLDivElement>("#app")!;
@@ -120,12 +126,14 @@ function renderHome(): void {
   stopPairStatusRefresh();
   const activeTab = selectedHomeTab();
   const pairStorage = browserPairStorage();
+  const videoQualityStorage = browserVideoQualityStorage();
   const pairedCameras = readPairedCameras(pairStorage);
   appRoot.innerHTML = buildHomeMarkup(
     selectedConnectionMode(),
     activeTab,
     pairedCameras,
-    readCameraDisplayName(pairStorage)
+    readCameraDisplayName(pairStorage),
+    readVideoQuality(videoQualityStorage)
   );
   appRoot
     .querySelectorAll<HTMLButtonElement>("[data-connection-mode]")
@@ -167,6 +175,16 @@ function renderHome(): void {
       const savedName = saveCameraDisplayName(pairStorage, input?.value ?? "");
       if (input) input.value = savedName;
       if (status) status.textContent = "Name saved";
+    });
+  appRoot
+    .querySelectorAll<HTMLButtonElement>("[data-video-quality]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const quality = parseVideoQuality(button.dataset.videoQuality);
+        if (!quality) return;
+        saveVideoQuality(videoQualityStorage, quality);
+        renderHome();
+      });
     });
   appRoot
     .querySelector("#camera")

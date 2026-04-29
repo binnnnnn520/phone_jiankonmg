@@ -1,4 +1,9 @@
 import type { ConnectionMode, ViewerPairedCamera } from "@phone-monitor/shared";
+import {
+  VIDEO_QUALITY_OPTIONS,
+  labelVideoQuality,
+  type VideoQuality
+} from "./video-quality.js";
 
 export type HomeTab = "home" | "cameras" | "me";
 
@@ -168,11 +173,36 @@ function buildCameraNameEditor(cameraDisplayName: string): string {
   `;
 }
 
+function buildVideoQualityButton(
+  quality: VideoQuality,
+  selectedQuality: VideoQuality
+): string {
+  const selected = quality === selectedQuality;
+  const className = selected
+    ? "quality-option quality-option-selected"
+    : "quality-option";
+  return `<button class="${className}" type="button" data-video-quality="${quality}" aria-pressed="${selected}">${labelVideoQuality(quality)}</button>`;
+}
+
+function buildVideoQualityPicker(selectedQuality: VideoQuality): string {
+  return `
+      <section class="video-quality-card" aria-label="Video quality">
+        <p class="video-quality-title">Video quality</p>
+        <div class="quality-options" role="group" aria-label="Video quality">
+          ${VIDEO_QUALITY_OPTIONS.map((option) =>
+            buildVideoQualityButton(option.value, selectedQuality)
+          ).join("")}
+        </div>
+      </section>
+  `;
+}
+
 function buildTabContent(
   selectedMode: ConnectionMode,
   activeTab: HomeTab,
   pairedCameras: ViewerPairedCamera[],
-  cameraDisplayName: string
+  cameraDisplayName: string,
+  selectedVideoQuality: VideoQuality
 ): string {
   if (activeTab === "cameras") {
     return `
@@ -187,8 +217,8 @@ function buildTabContent(
       ${buildHomeHeader("Me", "Personal settings for this phone.")}
       ${buildConnectionSummary(pairedCameras)}
       ${buildCameraNameEditor(cameraDisplayName)}
+      ${buildVideoQualityPicker(selectedVideoQuality)}
       ${buildConnectionPicker(selectedMode)}
-      <p class="home-note">Keep both phones charged and on the app.</p>
     `;
   }
 
@@ -209,12 +239,19 @@ export function buildHomeMarkup(
   selectedMode: ConnectionMode = "remote",
   activeTab: HomeTab = "home",
   pairedCameras: ViewerPairedCamera[] = [],
-  cameraDisplayName = "This phone camera"
+  cameraDisplayName = "This phone camera",
+  selectedVideoQuality: VideoQuality = "balanced"
 ): string {
   return `
     <section class="app-shell home-shell light-monitor-shell">
       <div class="home-tab-content" data-active-home-tab="${activeTab}">
-        ${buildTabContent(selectedMode, activeTab, pairedCameras, cameraDisplayName)}
+        ${buildTabContent(
+          selectedMode,
+          activeTab,
+          pairedCameras,
+          cameraDisplayName,
+          selectedVideoQuality
+        )}
       </div>
       ${buildBottomNav(activeTab)}
     </section>

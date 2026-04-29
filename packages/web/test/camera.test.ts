@@ -5,6 +5,10 @@ import type {
   StoppableMediaStream,
   WakeLockSentinelLike
 } from "../src/safety.js";
+import {
+  VIDEO_QUALITY_STORAGE_KEY,
+  buildVideoConstraints
+} from "../src/video-quality.js";
 
 type CameraModule = typeof import("../src/camera.js") & {
   buildCameraJoinMessage?: (room: {
@@ -35,6 +39,9 @@ type CameraModule = typeof import("../src/camera.js") & {
     }
   ) => string;
   buildCameraShellMarkup?: (connectionLabel: string) => string;
+  buildCameraMediaConstraints?: (storage: {
+    getItem: (key: string) => string | null;
+  }) => MediaStreamConstraints;
   handleCameraStartupFailure?: (params: {
     error: unknown;
     status: { textContent: string | null };
@@ -181,6 +188,22 @@ test("buildCameraJoinMessage includes the room's private camera token", async ()
       type: "join-camera",
       roomId: "room-1",
       cameraToken: "camera-token"
+    }
+  );
+});
+
+test("buildCameraMediaConstraints reuses saved video quality", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCameraMediaConstraints, "function");
+
+  assert.deepEqual(
+    camera.buildCameraMediaConstraints!({
+      getItem: (key) =>
+        key === VIDEO_QUALITY_STORAGE_KEY ? "data-saver" : null
+    }),
+    {
+      video: buildVideoConstraints("data-saver"),
+      audio: false
     }
   );
 });

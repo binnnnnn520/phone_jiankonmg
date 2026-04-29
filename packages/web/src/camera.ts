@@ -29,6 +29,12 @@ import {
   type WakeLockSentinelLike
 } from "./safety.js";
 import { SignalingClient } from "./signaling-client.js";
+import {
+  browserVideoQualityStorage,
+  buildVideoConstraints,
+  readVideoQuality,
+  type VideoQualityReader
+} from "./video-quality.js";
 import { createPeer, type PeerController } from "./webrtc.js";
 
 export interface BuildViewerUrlOptions {
@@ -71,6 +77,15 @@ export function buildCameraJoinMessage(
     type: "join-camera",
     roomId: room.roomId,
     cameraToken: room.cameraToken
+  };
+}
+
+export function buildCameraMediaConstraints(
+  storage: VideoQualityReader | undefined
+): MediaStreamConstraints {
+  return {
+    video: buildVideoConstraints(readVideoQuality(storage)),
+    audio: false
   };
 }
 
@@ -193,6 +208,7 @@ export async function renderCamera(
 ): Promise<void> {
   const config = loadClientConfig();
   const pairStorage = browserPairStorage();
+  const videoQualityStorage = browserVideoQualityStorage();
   const deviceId = getOrCreateDeviceId(pairStorage);
   const cameraPairing = readCameraPairing(pairStorage);
   const cameraDisplayName = readCameraDisplayName(pairStorage);
@@ -269,10 +285,9 @@ export async function renderCamera(
   try {
     wakeLock = await requestWakeLock();
     if (await stopIfClosed()) return;
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
-      audio: false
-    });
+    stream = await navigator.mediaDevices.getUserMedia(
+      buildCameraMediaConstraints(videoQualityStorage)
+    );
     if (await stopIfClosed()) return;
     preview.srcObject = stream;
 

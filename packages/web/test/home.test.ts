@@ -88,6 +88,16 @@ test("me tab renders an editable camera name", () => {
   assert.match(markup, /data-camera-name-save/);
 });
 
+test("me tab renders the selected video quality preference", () => {
+  const markup = buildHomeMarkup("remote", "me", [], "Kitchen phone", "sharp");
+
+  assert.match(markup, /Video quality/);
+  assert.match(markup, /Data saver/);
+  assert.match(markup, /Balanced/);
+  assert.match(markup, /Sharp/);
+  assert.match(markup, /data-video-quality="sharp"[^>]*aria-pressed="true"[^>]*>Sharp<\/button>/);
+});
+
 test("cameras tab renders paired camera reconnect and remove actions", () => {
   const markup = buildHomeMarkup("remote", "cameras", [
     {
