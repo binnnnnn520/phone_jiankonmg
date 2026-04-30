@@ -30,6 +30,27 @@ type TestViewerSession = {
   disconnect: () => void;
 };
 
+function createAudioStatusElement(initialClasses: string[] = []): {
+  element: Pick<HTMLElement, "textContent" | "classList">;
+  classes: Set<string>;
+} {
+  const classes = new Set(initialClasses);
+  return {
+    element: {
+      textContent: "",
+      classList: {
+        add: (...tokens: string[]) => {
+          for (const token of tokens) classes.add(token);
+        },
+        remove: (...tokens: string[]) => {
+          for (const token of tokens) classes.delete(token);
+        }
+      } as DOMTokenList
+    },
+    classes
+  };
+}
+
 type TestStartViewerSessionWithTokenParams = {
   config: ClientConfig;
   roomId: string;
@@ -860,7 +881,7 @@ test("startViewerSessionWithToken updates viewer audio status from remote stream
   const remoteStream = {
     getAudioTracks: () => [{ enabled: true }]
   } as unknown as MediaStream;
-  const audioStatus = { textContent: "" };
+  const audioStatus = createAudioStatusElement(["audio-status-off"]);
   const toggleAudio = { textContent: "" };
   const video = {
     dataset: {},
@@ -875,7 +896,7 @@ test("startViewerSessionWithToken updates viewer audio status from remote stream
     iceServers: [{ urls: "stun:example.test" }],
     video,
     onState: () => undefined,
-    audioStatus,
+    audioStatus: audioStatus.element,
     toggleAudio,
     deps: {
       createSignalingClient: () => createSignaling(events),
@@ -888,7 +909,9 @@ test("startViewerSessionWithToken updates viewer audio status from remote stream
 
   assert.equal(video.srcObject, remoteStream);
   assert.equal(video.muted, true);
-  assert.equal(audioStatus.textContent, "Environment audio is live");
+  assert.equal(audioStatus.element.textContent, "Environment audio is live");
+  assert.equal(audioStatus.classes.has("audio-status-live"), true);
+  assert.equal(audioStatus.classes.has("audio-status-off"), false);
   assert.equal(toggleAudio.textContent, "Unmute audio");
 });
 
@@ -897,7 +920,7 @@ test("startViewerSessionWithToken resets viewer audio state on disconnect", asyn
   const remoteStream = {
     getAudioTracks: () => [{ enabled: true }]
   } as unknown as MediaStream;
-  const audioStatus = { textContent: "" };
+  const audioStatus = createAudioStatusElement(["audio-status-live"]);
   const toggleAudio = { textContent: "" };
   const video = {
     dataset: {},
@@ -912,7 +935,7 @@ test("startViewerSessionWithToken resets viewer audio state on disconnect", asyn
     iceServers: [{ urls: "stun:example.test" }],
     video,
     onState: () => undefined,
-    audioStatus,
+    audioStatus: audioStatus.element,
     toggleAudio,
     deps: {
       createSignalingClient: () => createSignaling(events),
@@ -927,7 +950,9 @@ test("startViewerSessionWithToken resets viewer audio state on disconnect", asyn
   session.disconnect();
 
   assert.equal(video.muted, true);
-  assert.equal(audioStatus.textContent, "Environment audio unavailable");
+  assert.equal(audioStatus.element.textContent, "Environment audio unavailable");
+  assert.equal(audioStatus.classes.has("audio-status-off"), true);
+  assert.equal(audioStatus.classes.has("audio-status-live"), false);
   assert.equal(toggleAudio.textContent, "Unmute audio");
 });
 
@@ -937,7 +962,7 @@ test("startViewerSessionWithToken resets viewer audio state on remote session-en
   const remoteStream = {
     getAudioTracks: () => [{ enabled: true }]
   } as unknown as MediaStream;
-  const audioStatus = { textContent: "" };
+  const audioStatus = createAudioStatusElement(["audio-status-live"]);
   const toggleAudio = { textContent: "" };
   const video = {
     dataset: {},
@@ -952,7 +977,7 @@ test("startViewerSessionWithToken resets viewer audio state on remote session-en
     iceServers: [{ urls: "stun:example.test" }],
     video,
     onState: () => undefined,
-    audioStatus,
+    audioStatus: audioStatus.element,
     toggleAudio,
     deps: {
       createSignalingClient: () => signaling,
@@ -973,7 +998,9 @@ test("startViewerSessionWithToken resets viewer audio state on remote session-en
   assert.equal(video.srcObject, null);
   assert.equal(video.dataset.streamState, undefined);
   assert.equal(video.muted, true);
-  assert.equal(audioStatus.textContent, "Environment audio unavailable");
+  assert.equal(audioStatus.element.textContent, "Environment audio unavailable");
+  assert.equal(audioStatus.classes.has("audio-status-off"), true);
+  assert.equal(audioStatus.classes.has("audio-status-live"), false);
   assert.equal(toggleAudio.textContent, "Unmute audio");
 });
 
@@ -982,7 +1009,7 @@ test("startViewerSessionWithToken disables viewer audio toggle when remote strea
   const remoteStream = {
     getAudioTracks: () => []
   } as unknown as MediaStream;
-  const audioStatus = { textContent: "" };
+  const audioStatus = createAudioStatusElement(["audio-status-live"]);
   const toggleAudio = { textContent: "", disabled: false };
   const video = {
     dataset: {},
@@ -997,7 +1024,7 @@ test("startViewerSessionWithToken disables viewer audio toggle when remote strea
     iceServers: [{ urls: "stun:example.test" }],
     video,
     onState: () => undefined,
-    audioStatus,
+    audioStatus: audioStatus.element,
     toggleAudio,
     deps: {
       createSignalingClient: () => createSignaling(events),
@@ -1008,7 +1035,9 @@ test("startViewerSessionWithToken disables viewer audio toggle when remote strea
     }
   });
 
-  assert.equal(audioStatus.textContent, "Environment audio unavailable");
+  assert.equal(audioStatus.element.textContent, "Environment audio unavailable");
+  assert.equal(audioStatus.classes.has("audio-status-off"), true);
+  assert.equal(audioStatus.classes.has("audio-status-live"), false);
   assert.equal(toggleAudio.textContent, "Unmute audio");
   assert.equal(toggleAudio.disabled, true);
 });

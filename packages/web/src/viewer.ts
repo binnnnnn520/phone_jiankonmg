@@ -63,7 +63,8 @@ type ScheduleReconnectFn = (
   delayMs: number
 ) => unknown;
 type CancelReconnectFn = (handle: unknown) => void;
-type ViewerAudioStatusControl = Pick<HTMLElement, "textContent">;
+type ViewerAudioStatusControl = Pick<HTMLElement, "textContent"> &
+  Partial<Pick<HTMLElement, "classList">>;
 type ViewerAudioToggleControl = Pick<HTMLButtonElement, "textContent"> &
   Partial<Pick<HTMLButtonElement, "disabled">>;
 
@@ -394,6 +395,21 @@ export function toggleViewerAudio(
   syncViewerAudioButton(video, button);
 }
 
+function applyViewerAudioStatus(
+  audioStatus: ViewerAudioStatusControl,
+  audioAvailable: boolean
+): void {
+  audioStatus.textContent = buildViewerAudioStatusText(audioAvailable);
+  if (audioAvailable) {
+    audioStatus.classList?.add("audio-status-live");
+    audioStatus.classList?.remove("audio-status-off");
+    return;
+  }
+
+  audioStatus.classList?.add("audio-status-off");
+  audioStatus.classList?.remove("audio-status-live");
+}
+
 function resetViewerAudioState(
   video: Pick<HTMLVideoElement, "muted">,
   audioStatus?: ViewerAudioStatusControl,
@@ -401,7 +417,7 @@ function resetViewerAudioState(
 ): void {
   video.muted = true;
   if (audioStatus) {
-    audioStatus.textContent = buildViewerAudioStatusText(false);
+    applyViewerAudioStatus(audioStatus, false);
   }
   if (toggleAudio) {
     syncViewerAudioButton(video, toggleAudio);
@@ -422,7 +438,7 @@ function applyViewerAudioAvailability(
     video.muted = true;
   }
   if (audioStatus) {
-    audioStatus.textContent = buildViewerAudioStatusText(audioAvailable);
+    applyViewerAudioStatus(audioStatus, audioAvailable);
   }
   if (toggleAudio) {
     syncViewerAudioButton(video, toggleAudio);
