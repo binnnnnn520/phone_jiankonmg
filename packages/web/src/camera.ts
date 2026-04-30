@@ -86,12 +86,18 @@ export function buildCameraJoinMessage(
   };
 }
 
+export function buildCameraAudioStatusText(audioEnabled: boolean): string {
+  return audioEnabled
+    ? "Video and environment audio are live"
+    : "Environment audio is off";
+}
+
 export function buildCameraMediaConstraints(
   storage: VideoQualityReader | undefined
 ): MediaStreamConstraints {
   return {
     video: buildVideoConstraints(readVideoQuality(storage)),
-    audio: false
+    audio: true
   };
 }
 
@@ -148,6 +154,7 @@ export function buildCameraShellMarkup(connectionLabel: string): string {
       </div>
 
       <p class="ready-card" id="status" role="status">Starting camera...</p>
+      <p class="audio-status audio-status-off" id="audio-status">Environment audio is off</p>
       <p class="battery-status session-battery-status" id="battery-status" data-battery-status>Battery unavailable</p>
       <p class="wake-lock-guidance" id="wake-lock-guidance">Keep this phone open</p>
       <p class="mode-pill" id="connection-mode">${connectionLabel}</p>

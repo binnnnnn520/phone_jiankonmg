@@ -39,6 +39,7 @@ type CameraModule = typeof import("../src/camera.js") & {
     }
   ) => string;
   buildCameraShellMarkup?: (connectionLabel: string) => string;
+  buildCameraAudioStatusText?: (audioEnabled: boolean) => string;
   buildCameraMediaConstraints?: (storage: {
     getItem: (key: string) => string | null;
   }) => MediaStreamConstraints;
@@ -105,6 +106,30 @@ test("buildCameraShellMarkup includes compact battery status", async () => {
 
   assert.match(markup, /data-battery-status/);
   assert.match(markup, /Battery unavailable/);
+});
+
+test("buildCameraShellMarkup includes environment audio status", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCameraShellMarkup, "function");
+
+  const markup = camera.buildCameraShellMarkup!("Remote");
+
+  assert.match(markup, /id="audio-status"/);
+  assert.match(markup, /Environment audio/);
+});
+
+test("buildCameraAudioStatusText describes live and unavailable audio", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.buildCameraAudioStatusText, "function");
+
+  assert.equal(
+    camera.buildCameraAudioStatusText!(true),
+    "Video and environment audio are live"
+  );
+  assert.equal(
+    camera.buildCameraAudioStatusText!(false),
+    "Environment audio is off"
+  );
 });
 
 test("buildCameraShellMarkup includes compact keep-awake guidance", async () => {
@@ -212,7 +237,7 @@ test("buildCameraJoinMessage includes the room's private camera token", async ()
   );
 });
 
-test("buildCameraMediaConstraints reuses saved video quality", async () => {
+test("buildCameraMediaConstraints requests environment audio by default", async () => {
   const camera = await cameraModule();
   assert.equal(typeof camera.buildCameraMediaConstraints, "function");
 
@@ -223,7 +248,7 @@ test("buildCameraMediaConstraints reuses saved video quality", async () => {
     }),
     {
       video: buildVideoConstraints("data-saver"),
-      audio: false
+      audio: true
     }
   );
 });
