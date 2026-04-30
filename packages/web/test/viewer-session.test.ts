@@ -195,6 +195,10 @@ class TestElement {
   readonly children: TestElement[] = [];
   readonly ownerDocument: TestDocument;
   readonly tagName: string;
+  private readonly eventListeners = new Map<
+    string,
+    EventListenerOrEventListenerObject[]
+  >();
   className = "";
   id = "";
   textContent: string | null = "";
@@ -244,8 +248,25 @@ class TestElement {
     this.children.push(...items);
   }
 
-  addEventListener(): void {
-    // Tests only assert render-time DOM state.
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject
+  ): void {
+    this.eventListeners.set(type, [
+      ...(this.eventListeners.get(type) ?? []),
+      listener
+    ]);
+  }
+
+  dispatchEvent(event: Event): boolean {
+    for (const listener of this.eventListeners.get(event.type) ?? []) {
+      if (typeof listener === "function") {
+        listener.call(this, event);
+      } else {
+        listener.handleEvent(event);
+      }
+    }
+    return true;
   }
 
   setAttribute(name: string, value: string): void {
@@ -692,6 +713,24 @@ test("renderViewer includes environment audio status and control", () => {
   assert.equal(app.querySelector("#toggle-audio")?.textContent, "Unmute audio");
 });
 
+test("renderViewer syncs audio toggle text after native volume changes", () => {
+  const app = new TestDocument().createElement("div");
+
+  withWindowSearch("?mode=viewer", () => {
+    renderViewer(app as unknown as HTMLElement);
+  });
+
+  const video = app.querySelector("#remote");
+  const toggleAudio = app.querySelector("#toggle-audio");
+  assert.ok(video);
+  assert.ok(toggleAudio);
+
+  video.muted = false;
+  video.dispatchEvent(new Event("volumechange"));
+
+  assert.equal(toggleAudio.textContent, "Mute audio");
+});
+
 test("renderViewer includes compact battery status", () => {
   const app = new TestDocument().createElement("div");
 
@@ -851,4 +890,125 @@ test("startViewerSessionWithToken updates viewer audio status from remote stream
   assert.equal(video.muted, true);
   assert.equal(audioStatus.textContent, "Environment audio is live");
   assert.equal(toggleAudio.textContent, "Unmute audio");
+});
+
+test("startViewerSessionWithToken resets viewer audio state on disconnect", async () => {
+  const events: string[] = [];
+  const remoteStream = {
+    getAudioTracks: () => [{ enabled: true }]
+  } as unknown as MediaStream;
+  const audioStatus = { textContent: "" };
+  const toggleAudio = { textContent: "" };
+  const video = {
+    dataset: {},
+    muted: true,
+    srcObject: null
+  } as unknown as HTMLVideoElement;
+
+  const session = await startViewerSessionWithToken({
+    config,
+    roomId: "room-1",
+    viewerToken: "viewer-token",
+    iceServers: [{ urls: "stun:example.test" }],
+    video,
+    onState: () => undefined,
+    audioStatus,
+    toggleAudio,
+    deps: {
+      createSignalingClient: () => createSignaling(events),
+      createPeer: (params) => {
+        params.onRemoteStream?.(remoteStream);
+        return createPeer(events);
+      }
+    }
+  });
+  toggleViewerAudio(video, toggleAudio);
+
+  session.disconnect();
+
+  assert.equal(video.muted, true);
+  assert.equal(audioStatus.textContent, "Environment audio unavailable");
+  assert.equal(toggleAudio.textContent, "Unmute audio");
+});
+
+test("startViewerSessionWithToken resets viewer audio state on remote session-ended", async () => {
+  const events: string[] = [];
+  const signaling = createInteractiveSignaling(events);
+  const remoteStream = {
+    getAudioTracks: () => [{ enabled: true }]
+  } as unknown as MediaStream;
+  const audioStatus = { textContent: "" };
+  const toggleAudio = { textContent: "" };
+  const video = {
+    dataset: {},
+    muted: true,
+    srcObject: null
+  } as unknown as HTMLVideoElement;
+
+  await startViewerSessionWithToken({
+    config,
+    roomId: "room-1",
+    viewerToken: "viewer-token",
+    iceServers: [{ urls: "stun:example.test" }],
+    video,
+    onState: () => undefined,
+    audioStatus,
+    toggleAudio,
+    deps: {
+      createSignalingClient: () => signaling,
+      createPeer: (params) => {
+        params.onRemoteStream?.(remoteStream);
+        return createPeer(events);
+      }
+    }
+  });
+  toggleViewerAudio(video, toggleAudio);
+
+  signaling.emit({
+    type: "session-ended",
+    roomId: "room-1",
+    reason: "Camera stopped monitoring"
+  });
+
+  assert.equal(video.srcObject, null);
+  assert.equal(video.dataset.streamState, undefined);
+  assert.equal(video.muted, true);
+  assert.equal(audioStatus.textContent, "Environment audio unavailable");
+  assert.equal(toggleAudio.textContent, "Unmute audio");
+});
+
+test("startViewerSessionWithToken disables viewer audio toggle when remote stream has no audio", async () => {
+  const events: string[] = [];
+  const remoteStream = {
+    getAudioTracks: () => []
+  } as unknown as MediaStream;
+  const audioStatus = { textContent: "" };
+  const toggleAudio = { textContent: "", disabled: false };
+  const video = {
+    dataset: {},
+    muted: true,
+    srcObject: null
+  } as unknown as HTMLVideoElement;
+
+  await startViewerSessionWithToken({
+    config,
+    roomId: "room-1",
+    viewerToken: "viewer-token",
+    iceServers: [{ urls: "stun:example.test" }],
+    video,
+    onState: () => undefined,
+    audioStatus,
+    toggleAudio,
+    deps: {
+      createSignalingClient: () => createSignaling(events),
+      createPeer: (params) => {
+        params.onRemoteStream?.(remoteStream);
+        return createPeer(events);
+      }
+    }
+  });
+
+  assert.equal(audioStatus.textContent, "Environment audio unavailable");
+  assert.equal(toggleAudio.textContent, "Unmute audio");
+  assert.equal(toggleAudio.disabled, true);
 });

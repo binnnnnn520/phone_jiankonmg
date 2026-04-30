@@ -63,6 +63,9 @@ type ScheduleReconnectFn = (
   delayMs: number
 ) => unknown;
 type CancelReconnectFn = (handle: unknown) => void;
+type ViewerAudioStatusControl = Pick<HTMLElement, "textContent">;
+type ViewerAudioToggleControl = Pick<HTMLButtonElement, "textContent"> &
+  Partial<Pick<HTMLButtonElement, "disabled">>;
 
 export const AUTO_RECONNECT_INTERVAL_MS = 5000;
 const AUTO_RECONNECT_WAITING_STATUS = "Camera offline. Waiting to reconnect...";
@@ -91,8 +94,8 @@ export interface StartViewerSessionParams {
   video: HTMLVideoElement;
   onState: (state: UserFacingConnectionState) => void;
   onPairedCamera?: (pairedCamera: ViewerPairedCamera) => void;
-  audioStatus?: Pick<HTMLElement, "textContent">;
-  toggleAudio?: Pick<HTMLButtonElement, "textContent">;
+  audioStatus?: ViewerAudioStatusControl;
+  toggleAudio?: ViewerAudioToggleControl;
   deps?: {
     verifyPin?: VerifyPinFn;
     createSignalingClient?: CreateSignalingClientFn;
@@ -107,8 +110,8 @@ export interface StartViewerSessionWithTokenParams {
   iceServers: IceServerConfig[];
   video: HTMLVideoElement;
   onState: (state: UserFacingConnectionState) => void;
-  audioStatus?: Pick<HTMLElement, "textContent">;
-  toggleAudio?: Pick<HTMLButtonElement, "textContent">;
+  audioStatus?: ViewerAudioStatusControl;
+  toggleAudio?: ViewerAudioToggleControl;
   deps?: {
     createSignalingClient?: CreateSignalingClientFn;
     createPeer?: CreatePeerFn;
@@ -125,8 +128,8 @@ export interface CreateViewerAutoReconnectControllerParams {
   config: ClientConfig;
   video: HTMLVideoElement;
   status: Pick<HTMLElement, "textContent">;
-  audioStatus?: Pick<HTMLElement, "textContent">;
-  toggleAudio?: Pick<HTMLButtonElement, "textContent">;
+  audioStatus?: ViewerAudioStatusControl;
+  toggleAudio?: ViewerAudioToggleControl;
   getSession: () => ViewerSession | undefined;
   setSession: (session: ViewerSession | undefined) => void;
   reconnectPair: ReconnectPairFn;
@@ -183,11 +186,12 @@ export async function startViewerSessionWithToken(
     onRemoteStream: (stream) => {
       params.video.srcObject = stream;
       setRemoteVideoActive(params.video, true);
-      params.audioStatus &&
-        (params.audioStatus.textContent = buildViewerAudioStatusText(
-          hasAudioTrack(stream)
-        ));
-      params.toggleAudio && syncViewerAudioButton(params.video, params.toggleAudio);
+      applyViewerAudioAvailability(
+        params.video,
+        stream,
+        params.audioStatus,
+        params.toggleAudio
+      );
     }
   });
 
@@ -201,6 +205,11 @@ export async function startViewerSessionWithToken(
       () => {
         params.video.srcObject = null;
         setRemoteVideoActive(params.video, false);
+        resetViewerAudioState(
+          params.video,
+          params.audioStatus,
+          params.toggleAudio
+        );
       }
     );
   });
@@ -218,9 +227,11 @@ export async function startViewerSessionWithToken(
       signaling.close();
       params.video.srcObject = null;
       setRemoteVideoActive(params.video, false);
-      params.audioStatus &&
-        (params.audioStatus.textContent = buildViewerAudioStatusText(false));
-      params.toggleAudio && syncViewerAudioButton(params.video, params.toggleAudio);
+      resetViewerAudioState(
+        params.video,
+        params.audioStatus,
+        params.toggleAudio
+      );
       params.onState("Session ended");
     }
   };
@@ -370,17 +381,53 @@ export function buildViewerAudioStatusText(audioAvailable: boolean): string {
 
 export function syncViewerAudioButton(
   video: Pick<HTMLVideoElement, "muted">,
-  button: Pick<HTMLButtonElement, "textContent">
+  button: ViewerAudioToggleControl
 ): void {
   button.textContent = video.muted ? "Unmute audio" : "Mute audio";
 }
 
 export function toggleViewerAudio(
   video: Pick<HTMLVideoElement, "muted">,
-  button: Pick<HTMLButtonElement, "textContent">
+  button: ViewerAudioToggleControl
 ): void {
   video.muted = !video.muted;
   syncViewerAudioButton(video, button);
+}
+
+function resetViewerAudioState(
+  video: Pick<HTMLVideoElement, "muted">,
+  audioStatus?: ViewerAudioStatusControl,
+  toggleAudio?: ViewerAudioToggleControl
+): void {
+  video.muted = true;
+  if (audioStatus) {
+    audioStatus.textContent = buildViewerAudioStatusText(false);
+  }
+  if (toggleAudio) {
+    syncViewerAudioButton(video, toggleAudio);
+    toggleAudio.disabled = true;
+  }
+}
+
+function applyViewerAudioAvailability(
+  video: Pick<HTMLVideoElement, "muted">,
+  stream: MediaStream,
+  audioStatus?: ViewerAudioStatusControl,
+  toggleAudio?: ViewerAudioToggleControl
+): void {
+  if (!audioStatus && !toggleAudio) return;
+
+  const audioAvailable = hasAudioTrack(stream);
+  if (!audioAvailable) {
+    video.muted = true;
+  }
+  if (audioStatus) {
+    audioStatus.textContent = buildViewerAudioStatusText(audioAvailable);
+  }
+  if (toggleAudio) {
+    syncViewerAudioButton(video, toggleAudio);
+    toggleAudio.disabled = !audioAvailable;
+  }
 }
 
 function setRemoteVideoActive(video: HTMLVideoElement, active: boolean): void {
@@ -606,8 +653,7 @@ export function renderViewer(
   toggleAudio.className = "ghost-outline audio-toggle";
   toggleAudio.id = "toggle-audio";
   toggleAudio.type = "button";
-  video.muted = true;
-  syncViewerAudioButton(video, toggleAudio);
+  resetViewerAudioState(video, audioStatus, toggleAudio);
 
   audioRow.append(audioStatus, toggleAudio);
 
@@ -738,6 +784,9 @@ export function renderViewer(
 
   toggleAudio.addEventListener("click", () => {
     toggleViewerAudio(video, toggleAudio);
+  });
+  video.addEventListener("volumechange", () => {
+    syncViewerAudioButton(video, toggleAudio);
   });
 
   async function reconnectFromStoredPair(pairId: string): Promise<void> {
