@@ -1025,6 +1025,52 @@ canvas {
   line-height: 1.2;
 }
 
+.audio-status {
+  justify-self: center;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  margin: -4px 0 0;
+  padding: 0 12px;
+  border: 1px solid #b7e4da;
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal-ink);
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.audio-status-off {
+  border-color: #ffd6ca;
+  background: var(--coral-soft);
+  color: #a73828;
+}
+
+.audio-status-live {
+  border-color: #b7e4da;
+  background: var(--teal-soft);
+  color: var(--teal-ink);
+}
+
+.viewer-audio-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.viewer-audio-row .audio-status {
+  justify-self: start;
+  margin: 0;
+}
+
+.audio-toggle {
+  min-height: 38px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
 .form-grid {
   display: grid;
   gap: 12px;

@@ -388,7 +388,10 @@ test("stopCameraSession releases wake lock after ending the room", async () => {
       close: () => events.push("close-signaling")
     },
     stream: {
-      getTracks: () => [{ stop: () => events.push("stop-track") }]
+      getTracks: () => [
+        { stop: () => events.push("stop-video-track") },
+        { stop: () => events.push("stop-audio-track") }
+      ]
     },
     wakeLock: {
       release: async () => {
@@ -401,7 +404,8 @@ test("stopCameraSession releases wake lock after ending the room", async () => {
     "close-peer",
     "send:session-ended",
     "close-signaling",
-    "stop-track",
+    "stop-video-track",
+    "stop-audio-track",
     "release-wake-lock"
   ]);
 });
