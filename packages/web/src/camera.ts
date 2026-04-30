@@ -92,6 +92,21 @@ export function buildCameraAudioStatusText(audioEnabled: boolean): string {
     : "Environment audio is off";
 }
 
+export function applyCameraAudioStatus(
+  element: Pick<HTMLElement, "textContent" | "classList">,
+  audioEnabled: boolean
+): void {
+  element.textContent = buildCameraAudioStatusText(audioEnabled);
+  if (audioEnabled) {
+    element.classList.add("audio-status-live");
+    element.classList.remove("audio-status-off");
+    return;
+  }
+
+  element.classList.add("audio-status-off");
+  element.classList.remove("audio-status-live");
+}
+
 export function buildCameraMediaConstraints(
   storage: VideoQualityReader | undefined
 ): MediaStreamConstraints {
@@ -237,6 +252,7 @@ export async function renderCamera(
   app.innerHTML = buildCameraShellMarkup(connectionMode.label);
 
   const status = app.querySelector<HTMLParagraphElement>("#status")!;
+  const audioStatus = app.querySelector<HTMLParagraphElement>("#audio-status")!;
   const preview = app.querySelector<HTMLVideoElement>("#preview")!;
   const qr = app.querySelector<HTMLCanvasElement>("#qr")!;
   const pin = app.querySelector<HTMLParagraphElement>("#pin")!;
@@ -328,6 +344,7 @@ export async function renderCamera(
       buildCameraMediaConstraints(videoQualityStorage)
     );
     if (await stopIfClosed()) return;
+    applyCameraAudioStatus(audioStatus, true);
     preview.srcObject = stream;
 
     const room: CreateRoomResponse = await createRoom(

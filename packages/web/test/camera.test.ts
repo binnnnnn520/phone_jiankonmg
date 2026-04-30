@@ -40,6 +40,10 @@ type CameraModule = typeof import("../src/camera.js") & {
   ) => string;
   buildCameraShellMarkup?: (connectionLabel: string) => string;
   buildCameraAudioStatusText?: (audioEnabled: boolean) => string;
+  applyCameraAudioStatus?: (
+    element: Pick<HTMLElement, "textContent" | "classList">,
+    audioEnabled: boolean
+  ) => void;
   buildCameraMediaConstraints?: (storage: {
     getItem: (key: string) => string | null;
   }) => MediaStreamConstraints;
@@ -73,6 +77,27 @@ type CameraModule = typeof import("../src/camera.js") & {
 
 async function cameraModule(): Promise<CameraModule> {
   return (await import("../src/camera.js")) as CameraModule;
+}
+
+function createAudioStatusElement(initialClasses: string[] = []): {
+  element: Pick<HTMLElement, "textContent" | "classList">;
+  classes: Set<string>;
+} {
+  const classes = new Set(initialClasses);
+  return {
+    element: {
+      textContent: "",
+      classList: {
+        add: (...tokens: string[]) => {
+          for (const token of tokens) classes.add(token);
+        },
+        remove: (...tokens: string[]) => {
+          for (const token of tokens) classes.delete(token);
+        }
+      } as DOMTokenList
+    },
+    classes
+  };
 }
 
 test("buildViewerUrl creates a same-origin viewer URL with the room query", async () => {
@@ -130,6 +155,26 @@ test("buildCameraAudioStatusText describes live and unavailable audio", async ()
     camera.buildCameraAudioStatusText!(false),
     "Environment audio is off"
   );
+});
+
+test("applyCameraAudioStatus updates audio status text and classes", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.applyCameraAudioStatus, "function");
+
+  const liveStatus = createAudioStatusElement(["audio-status-off"]);
+  camera.applyCameraAudioStatus!(liveStatus.element, true);
+  assert.equal(
+    liveStatus.element.textContent,
+    "Video and environment audio are live"
+  );
+  assert.equal(liveStatus.classes.has("audio-status-live"), true);
+  assert.equal(liveStatus.classes.has("audio-status-off"), false);
+
+  const offStatus = createAudioStatusElement(["audio-status-live"]);
+  camera.applyCameraAudioStatus!(offStatus.element, false);
+  assert.equal(offStatus.element.textContent, "Environment audio is off");
+  assert.equal(offStatus.classes.has("audio-status-off"), true);
+  assert.equal(offStatus.classes.has("audio-status-live"), false);
 });
 
 test("buildCameraShellMarkup includes compact keep-awake guidance", async () => {
