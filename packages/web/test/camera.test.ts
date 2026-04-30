@@ -10,6 +10,10 @@ import {
   buildVideoConstraints
 } from "../src/video-quality.js";
 
+type TestMediaDevices = {
+  getUserMedia: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+};
+
 type CameraModule = typeof import("../src/camera.js") & {
   buildCameraJoinMessage?: (room: {
     roomId: string;
@@ -47,6 +51,10 @@ type CameraModule = typeof import("../src/camera.js") & {
   buildCameraMediaConstraints?: (storage: {
     getItem: (key: string) => string | null;
   }) => MediaStreamConstraints;
+  requestCameraMonitoringStream?: (
+    mediaDevices: TestMediaDevices,
+    storage: { getItem: (key: string) => string | null }
+  ) => Promise<{ stream: MediaStream; audioEnabled: boolean }>;
   handleCameraStartupFailure?: (params: {
     error: unknown;
     status: { textContent: string | null };
@@ -296,6 +304,73 @@ test("buildCameraMediaConstraints requests environment audio by default", async 
       audio: true
     }
   );
+});
+
+test("requestCameraMonitoringStream returns audio-enabled stream when combined capture works", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.requestCameraMonitoringStream, "function");
+
+  const stream = { id: "stream-with-audio" } as unknown as MediaStream;
+  const calls: MediaStreamConstraints[] = [];
+
+  const result = await camera.requestCameraMonitoringStream!(
+    {
+      getUserMedia: async (constraints) => {
+        calls.push(constraints);
+        return stream;
+      }
+    },
+    {
+      getItem: (key) =>
+        key === VIDEO_QUALITY_STORAGE_KEY ? "balanced" : null
+    }
+  );
+
+  assert.equal(result.stream, stream);
+  assert.equal(result.audioEnabled, true);
+  assert.deepEqual(calls, [
+    {
+      video: buildVideoConstraints("balanced"),
+      audio: true
+    }
+  ]);
+});
+
+test("requestCameraMonitoringStream falls back to video-only when microphone capture fails", async () => {
+  const camera = await cameraModule();
+  assert.equal(typeof camera.requestCameraMonitoringStream, "function");
+
+  const videoOnlyStream = { id: "video-only" } as unknown as MediaStream;
+  const calls: MediaStreamConstraints[] = [];
+
+  const result = await camera.requestCameraMonitoringStream!(
+    {
+      getUserMedia: async (constraints) => {
+        calls.push(constraints);
+        if (constraints.audio === true) {
+          throw new DOMException("Microphone blocked", "NotAllowedError");
+        }
+        return videoOnlyStream;
+      }
+    },
+    {
+      getItem: (key) =>
+        key === VIDEO_QUALITY_STORAGE_KEY ? "sharp" : null
+    }
+  );
+
+  assert.equal(result.stream, videoOnlyStream);
+  assert.equal(result.audioEnabled, false);
+  assert.deepEqual(calls, [
+    {
+      video: buildVideoConstraints("sharp"),
+      audio: true
+    },
+    {
+      video: buildVideoConstraints("sharp"),
+      audio: false
+    }
+  ]);
 });
 
 test("stopCameraSession releases wake lock after ending the room", async () => {

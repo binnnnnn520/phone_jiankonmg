@@ -61,6 +61,11 @@ export interface RenderCameraOptions {
   onBack?: () => void;
 }
 
+export interface CameraMonitoringStream {
+  stream: MediaStream;
+  audioEnabled: boolean;
+}
+
 export function buildViewerUrl(
   roomId: string,
   options: BuildViewerUrlOptions
@@ -114,6 +119,32 @@ export function buildCameraMediaConstraints(
     video: buildVideoConstraints(readVideoQuality(storage)),
     audio: true
   };
+}
+
+export async function requestCameraMonitoringStream(
+  mediaDevices: {
+    getUserMedia: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+  },
+  storage: VideoQualityReader | undefined
+): Promise<CameraMonitoringStream> {
+  const constraints = buildCameraMediaConstraints(storage);
+
+  try {
+    return {
+      stream: await mediaDevices.getUserMedia(constraints),
+      audioEnabled: true
+    };
+  } catch (error) {
+    if (constraints.audio !== true) throw error;
+
+    return {
+      stream: await mediaDevices.getUserMedia({
+        ...constraints,
+        audio: false
+      }),
+      audioEnabled: false
+    };
+  }
 }
 
 export function buildCreateRoomRequest(
@@ -340,11 +371,13 @@ export async function renderCamera(
   try {
     await wakeLock.request();
     if (await stopIfClosed()) return;
-    stream = await navigator.mediaDevices.getUserMedia(
-      buildCameraMediaConstraints(videoQualityStorage)
+    const monitoringStream = await requestCameraMonitoringStream(
+      navigator.mediaDevices,
+      videoQualityStorage
     );
+    stream = monitoringStream.stream;
     if (await stopIfClosed()) return;
-    applyCameraAudioStatus(audioStatus, true);
+    applyCameraAudioStatus(audioStatus, monitoringStream.audioEnabled);
     preview.srcObject = stream;
 
     const room: CreateRoomResponse = await createRoom(
