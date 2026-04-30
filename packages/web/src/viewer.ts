@@ -340,6 +340,31 @@ export function createViewerAutoReconnectController(
   };
 }
 
+export function hasAudioTrack(stream: MediaStream): boolean {
+  return stream.getAudioTracks().length > 0;
+}
+
+export function buildViewerAudioStatusText(audioAvailable: boolean): string {
+  return audioAvailable
+    ? "Environment audio is live"
+    : "Environment audio unavailable";
+}
+
+export function syncViewerAudioButton(
+  video: Pick<HTMLVideoElement, "muted">,
+  button: Pick<HTMLButtonElement, "textContent">
+): void {
+  button.textContent = video.muted ? "Unmute audio" : "Mute audio";
+}
+
+export function toggleViewerAudio(
+  video: Pick<HTMLVideoElement, "muted">,
+  button: Pick<HTMLButtonElement, "textContent">
+): void {
+  video.muted = !video.muted;
+  syncViewerAudioButton(video, button);
+}
+
 function setRemoteVideoActive(video: HTMLVideoElement, active: boolean): void {
   const dataset = (video as HTMLVideoElement & { dataset?: DOMStringMap }).dataset;
   if (!dataset) return;

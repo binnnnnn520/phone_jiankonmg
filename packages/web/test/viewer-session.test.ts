@@ -8,10 +8,13 @@ import type {
   ViewerPairedCamera
 } from "@phone-monitor/shared";
 import {
+  buildViewerAudioStatusText,
   extractRoomFromQrPayload,
+  hasAudioTrack,
   renderViewer,
   startViewerSession,
-  startViewerSessionWithToken
+  startViewerSessionWithToken,
+  toggleViewerAudio
 } from "../src/viewer.js";
 import type { ClientConfig } from "../src/config.js";
 import type { SignalingClientLike } from "../src/signaling-client.js";
@@ -278,6 +281,42 @@ function withWindowSearch<T>(search: string, callback: () => T): T {
     }
   }
 }
+
+test("hasAudioTrack detects remote environment audio tracks", () => {
+  const withAudio = {
+    getAudioTracks: () => [{ enabled: true }]
+  } as unknown as MediaStream;
+  const withoutAudio = {
+    getAudioTracks: () => []
+  } as unknown as MediaStream;
+
+  assert.equal(hasAudioTrack(withAudio), true);
+  assert.equal(hasAudioTrack(withoutAudio), false);
+});
+
+test("buildViewerAudioStatusText describes live and unavailable remote audio", () => {
+  assert.equal(
+    buildViewerAudioStatusText(true),
+    "Environment audio is live"
+  );
+  assert.equal(
+    buildViewerAudioStatusText(false),
+    "Environment audio unavailable"
+  );
+});
+
+test("toggleViewerAudio flips the local viewer mute state", () => {
+  const video = { muted: true } as HTMLVideoElement;
+  const button = { textContent: "" };
+
+  toggleViewerAudio(video, button);
+  assert.equal(video.muted, false);
+  assert.equal(button.textContent, "Mute audio");
+
+  toggleViewerAudio(video, button);
+  assert.equal(video.muted, true);
+  assert.equal(button.textContent, "Unmute audio");
+});
 
 test("startViewerSession verifies the PIN before signaling joins the room", async () => {
   const events: string[] = [];
