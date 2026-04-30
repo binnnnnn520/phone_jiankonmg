@@ -37,6 +37,8 @@ type TestStartViewerSessionWithTokenParams = {
   iceServers: IceServerConfig[];
   video: HTMLVideoElement;
   onState: (state: UserFacingConnectionState) => void;
+  audioStatus?: Pick<HTMLElement, "textContent">;
+  toggleAudio?: Pick<HTMLButtonElement, "textContent">;
 };
 
 type ViewerAutoReconnectController = {
@@ -202,6 +204,7 @@ class TestElement {
   maxLength = 0;
   type = "";
   disabled = false;
+  muted = false;
   srcObject: unknown;
 
   constructor(tagName: string, ownerDocument: TestDocument) {
@@ -675,6 +678,20 @@ test("renderViewer includes a QR scan action before manual PIN entry", () => {
   assert.equal(app.querySelector("#scan-qr")?.textContent, "Scan QR code");
 });
 
+test("renderViewer includes environment audio status and control", () => {
+  const app = new TestDocument().createElement("div");
+
+  withWindowSearch("?mode=viewer", () => {
+    renderViewer(app as unknown as HTMLElement);
+  });
+
+  assert.equal(
+    app.querySelector("#audio-status")?.textContent,
+    "Environment audio unavailable"
+  );
+  assert.equal(app.querySelector("#toggle-audio")?.textContent, "Unmute audio");
+});
+
 test("renderViewer includes compact battery status", () => {
   const app = new TestDocument().createElement("div");
 
@@ -797,4 +814,41 @@ test("startViewerSession marks remote video active only while connected", async 
   assert.equal(video.srcObject, null);
   assert.equal(video.dataset.streamState, undefined);
   assert.equal(states.at(-1), "Session ended");
+});
+
+test("startViewerSessionWithToken updates viewer audio status from remote stream tracks", async () => {
+  const events: string[] = [];
+  const remoteStream = {
+    getAudioTracks: () => [{ enabled: true }]
+  } as unknown as MediaStream;
+  const audioStatus = { textContent: "" };
+  const toggleAudio = { textContent: "" };
+  const video = {
+    dataset: {},
+    muted: true,
+    srcObject: null
+  } as unknown as HTMLVideoElement;
+
+  await startViewerSessionWithToken({
+    config,
+    roomId: "room-1",
+    viewerToken: "viewer-token",
+    iceServers: [{ urls: "stun:example.test" }],
+    video,
+    onState: () => undefined,
+    audioStatus,
+    toggleAudio,
+    deps: {
+      createSignalingClient: () => createSignaling(events),
+      createPeer: (params) => {
+        params.onRemoteStream?.(remoteStream);
+        return createPeer(events);
+      }
+    }
+  });
+
+  assert.equal(video.srcObject, remoteStream);
+  assert.equal(video.muted, true);
+  assert.equal(audioStatus.textContent, "Environment audio is live");
+  assert.equal(toggleAudio.textContent, "Unmute audio");
 });

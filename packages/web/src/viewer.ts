@@ -91,6 +91,8 @@ export interface StartViewerSessionParams {
   video: HTMLVideoElement;
   onState: (state: UserFacingConnectionState) => void;
   onPairedCamera?: (pairedCamera: ViewerPairedCamera) => void;
+  audioStatus?: Pick<HTMLElement, "textContent">;
+  toggleAudio?: Pick<HTMLButtonElement, "textContent">;
   deps?: {
     verifyPin?: VerifyPinFn;
     createSignalingClient?: CreateSignalingClientFn;
@@ -105,6 +107,8 @@ export interface StartViewerSessionWithTokenParams {
   iceServers: IceServerConfig[];
   video: HTMLVideoElement;
   onState: (state: UserFacingConnectionState) => void;
+  audioStatus?: Pick<HTMLElement, "textContent">;
+  toggleAudio?: Pick<HTMLButtonElement, "textContent">;
   deps?: {
     createSignalingClient?: CreateSignalingClientFn;
     createPeer?: CreatePeerFn;
@@ -121,6 +125,8 @@ export interface CreateViewerAutoReconnectControllerParams {
   config: ClientConfig;
   video: HTMLVideoElement;
   status: Pick<HTMLElement, "textContent">;
+  audioStatus?: Pick<HTMLElement, "textContent">;
+  toggleAudio?: Pick<HTMLButtonElement, "textContent">;
   getSession: () => ViewerSession | undefined;
   setSession: (session: ViewerSession | undefined) => void;
   reconnectPair: ReconnectPairFn;
@@ -149,6 +155,8 @@ export async function startViewerSession(
     iceServers: verified.iceServers,
     video: params.video,
     onState: params.onState,
+    ...(params.audioStatus ? { audioStatus: params.audioStatus } : {}),
+    ...(params.toggleAudio ? { toggleAudio: params.toggleAudio } : {}),
     deps: {
       ...(params.deps?.createSignalingClient
         ? { createSignalingClient: params.deps.createSignalingClient }
@@ -175,6 +183,11 @@ export async function startViewerSessionWithToken(
     onRemoteStream: (stream) => {
       params.video.srcObject = stream;
       setRemoteVideoActive(params.video, true);
+      params.audioStatus &&
+        (params.audioStatus.textContent = buildViewerAudioStatusText(
+          hasAudioTrack(stream)
+        ));
+      params.toggleAudio && syncViewerAudioButton(params.video, params.toggleAudio);
     }
   });
 
@@ -205,6 +218,9 @@ export async function startViewerSessionWithToken(
       signaling.close();
       params.video.srcObject = null;
       setRemoteVideoActive(params.video, false);
+      params.audioStatus &&
+        (params.audioStatus.textContent = buildViewerAudioStatusText(false));
+      params.toggleAudio && syncViewerAudioButton(params.video, params.toggleAudio);
       params.onState("Session ended");
     }
   };
@@ -300,7 +316,9 @@ export function createViewerAutoReconnectController(
         viewerToken: reconnected.viewerToken,
         iceServers: reconnected.iceServers,
         video: params.video,
-        onState: handleViewerState
+        onState: handleViewerState,
+        ...(params.audioStatus ? { audioStatus: params.audioStatus } : {}),
+        ...(params.toggleAudio ? { toggleAudio: params.toggleAudio } : {})
       });
 
       if (stopped) {
@@ -576,6 +594,23 @@ export function renderViewer(
   status.setAttribute("role", "status");
   status.textContent = "Connect to a camera";
 
+  const audioRow = doc.createElement("div");
+  audioRow.className = "viewer-audio-row";
+
+  const audioStatus = doc.createElement("p");
+  audioStatus.className = "audio-status audio-status-off";
+  audioStatus.id = "audio-status";
+  audioStatus.textContent = buildViewerAudioStatusText(false);
+
+  const toggleAudio = doc.createElement("button");
+  toggleAudio.className = "ghost-outline audio-toggle";
+  toggleAudio.id = "toggle-audio";
+  toggleAudio.type = "button";
+  video.muted = true;
+  syncViewerAudioButton(video, toggleAudio);
+
+  audioRow.append(audioStatus, toggleAudio);
+
   const batteryStatus = doc.createElement("p");
   batteryStatus.className = "battery-status session-battery-status";
   batteryStatus.id = "battery-status";
@@ -645,6 +680,7 @@ export function renderViewer(
     header,
     videoWrap,
     status,
+    audioRow,
     batteryStatus,
     wakeLockGuidance,
     scan,
@@ -668,6 +704,8 @@ export function renderViewer(
     config: runtimeConfig,
     video,
     status,
+    audioStatus,
+    toggleAudio,
     getSession: () => session,
     setSession: (nextSession) => {
       session = nextSession;
@@ -696,6 +734,10 @@ export function renderViewer(
     autoReconnect.disconnect();
     void wakeLock.dispose();
     options.onBack?.();
+  });
+
+  toggleAudio.addEventListener("click", () => {
+    toggleViewerAudio(video, toggleAudio);
   });
 
   async function reconnectFromStoredPair(pairId: string): Promise<void> {
@@ -740,6 +782,8 @@ export function renderViewer(
         pin,
         viewerDeviceId,
         video,
+        audioStatus,
+        toggleAudio,
         onPairedCamera: (pairedCamera) => {
           upsertPairedCamera(pairStorage, pairedCamera);
         },
