@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   VIDEO_QUALITY_STORAGE_KEY,
+  buildVideoSenderEncoding,
   buildVideoConstraints,
+  configureVideoSender,
   readVideoQuality,
   saveVideoQuality
 } from "../src/video-quality.js";
@@ -38,12 +40,58 @@ test("data saver maps to lower camera constraints", () => {
   });
 });
 
-test("sharp maps to higher camera constraints", () => {
+test("balanced maps to latency-conscious camera constraints", () => {
+  assert.deepEqual(buildVideoConstraints("balanced"), {
+    facingMode: "environment",
+    width: { ideal: 960, max: 1280 },
+    height: { ideal: 540, max: 720 },
+    frameRate: { ideal: 15, max: 20 }
+  });
+});
+
+test("sharp maps to higher but bounded camera constraints", () => {
   assert.deepEqual(buildVideoConstraints("sharp"), {
     facingMode: "environment",
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
-    frameRate: { ideal: 30 }
+    width: { ideal: 1280, max: 1280 },
+    height: { ideal: 720, max: 720 },
+    frameRate: { ideal: 20, max: 24 }
+  });
+});
+
+test("video sender encoding is capped for low latency", () => {
+  assert.deepEqual(buildVideoSenderEncoding("data-saver"), {
+    maxBitrate: 450_000,
+    maxFramerate: 15
+  });
+  assert.deepEqual(buildVideoSenderEncoding("balanced"), {
+    maxBitrate: 900_000,
+    maxFramerate: 20
+  });
+  assert.deepEqual(buildVideoSenderEncoding("sharp"), {
+    maxBitrate: 1_600_000,
+    maxFramerate: 24
+  });
+});
+
+test("configureVideoSender applies bitrate and framerate caps", async () => {
+  const calls: RTCRtpSendParameters[] = [];
+  const sender = {
+    getParameters: () =>
+      ({
+        encodings: [{ active: true }]
+      }) as RTCRtpSendParameters,
+    setParameters: async (params: RTCRtpSendParameters) => {
+      calls.push(params);
+    }
+  };
+
+  await configureVideoSender(sender, "balanced");
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0]?.encodings?.[0], {
+    active: true,
+    maxBitrate: 900_000,
+    maxFramerate: 20
   });
 });
 

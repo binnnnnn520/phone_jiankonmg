@@ -38,6 +38,7 @@ import { SignalingClient } from "./signaling-client.js";
 import {
   browserVideoQualityStorage,
   buildVideoConstraints,
+  configureVideoSender,
   readVideoQuality,
   type VideoQualityReader
 } from "./video-quality.js";
@@ -270,6 +271,7 @@ export async function renderCamera(
   const config = loadClientConfig();
   const pairStorage = browserPairStorage();
   const videoQualityStorage = browserVideoQualityStorage();
+  const selectedVideoQuality = readVideoQuality(videoQualityStorage);
   const deviceId = getOrCreateDeviceId(pairStorage);
   const cameraPairing = readCameraPairing(pairStorage);
   const cameraDisplayName = readCameraDisplayName(pairStorage);
@@ -418,7 +420,11 @@ export async function renderCamera(
     if (await stopIfClosed()) return;
 
     for (const track of stream.getTracks()) {
-      activePeerController.peer.addTrack(track, stream);
+      const sender = activePeerController.peer.addTrack(track, stream);
+      if (track.kind === "video") {
+        track.contentHint = "motion";
+        void configureVideoSender(sender, selectedVideoQuality).catch(() => undefined);
+      }
     }
 
     signaling.onMessage((message) => {

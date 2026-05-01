@@ -69,6 +69,48 @@ export function labelVideoQuality(value: VideoQuality): string {
   return VIDEO_QUALITY_OPTIONS.find((option) => option.value === value)?.label ?? "Balanced";
 }
 
+export function buildVideoSenderEncoding(
+  value: VideoQuality
+): Pick<RTCRtpEncodingParameters, "maxBitrate" | "maxFramerate"> {
+  if (value === "data-saver") {
+    return {
+      maxBitrate: 450_000,
+      maxFramerate: 15
+    };
+  }
+
+  if (value === "sharp") {
+    return {
+      maxBitrate: 1_600_000,
+      maxFramerate: 24
+    };
+  }
+
+  return {
+    maxBitrate: 900_000,
+    maxFramerate: 20
+  };
+}
+
+export async function configureVideoSender(
+  sender: Pick<RTCRtpSender, "getParameters" | "setParameters">,
+  value: VideoQuality
+): Promise<void> {
+  const parameters = sender.getParameters();
+  const encodings = parameters.encodings?.length
+    ? [...parameters.encodings]
+    : [{} as RTCRtpEncodingParameters];
+  encodings[0] = {
+    ...encodings[0],
+    ...buildVideoSenderEncoding(value)
+  };
+
+  await sender.setParameters({
+    ...parameters,
+    encodings
+  });
+}
+
 export function buildVideoConstraints(value: VideoQuality): MediaTrackConstraints {
   if (value === "data-saver") {
     return {
@@ -82,16 +124,16 @@ export function buildVideoConstraints(value: VideoQuality): MediaTrackConstraint
   if (value === "sharp") {
     return {
       facingMode: "environment",
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      frameRate: { ideal: 30 }
+      width: { ideal: 1280, max: 1280 },
+      height: { ideal: 720, max: 720 },
+      frameRate: { ideal: 20, max: 24 }
     };
   }
 
   return {
     facingMode: "environment",
-    width: { ideal: 1280 },
-    height: { ideal: 720 },
-    frameRate: { ideal: 24, max: 30 }
+    width: { ideal: 960, max: 1280 },
+    height: { ideal: 540, max: 720 },
+    frameRate: { ideal: 15, max: 20 }
   };
 }
