@@ -286,7 +286,7 @@ export async function configureVideoSender(
 
   const nextParameters = {
     ...parameters,
-    degradationPreference: "balanced",
+    degradationPreference: "maintain-framerate",
     encodings
   } as RTCRtpSendParameters;
 

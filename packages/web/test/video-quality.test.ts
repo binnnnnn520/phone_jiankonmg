@@ -94,7 +94,7 @@ test("configureVideoSender applies bitrate and framerate caps", async () => {
     maxBitrate: 1_400_000,
     maxFramerate: 24
   });
-  assert.equal(calls[0]?.degradationPreference, "balanced");
+  assert.equal(calls[0]?.degradationPreference, "maintain-framerate");
 });
 
 test("video SDP offer is seeded with startup bitrate hints", () => {
