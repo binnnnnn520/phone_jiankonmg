@@ -81,14 +81,14 @@ export function buildVideoSenderEncoding(
 
   if (value === "sharp") {
     return {
-      maxBitrate: 1_600_000,
-      maxFramerate: 24
+      maxBitrate: 2_200_000,
+      maxFramerate: 30
     };
   }
 
   return {
-    maxBitrate: 900_000,
-    maxFramerate: 20
+    maxBitrate: 1_400_000,
+    maxFramerate: 24
   };
 }
 
@@ -105,10 +105,13 @@ export async function configureVideoSender(
     ...buildVideoSenderEncoding(value)
   };
 
-  await sender.setParameters({
+  const nextParameters = {
     ...parameters,
+    degradationPreference: "maintain-framerate",
     encodings
-  });
+  } as RTCRtpSendParameters;
+
+  await sender.setParameters(nextParameters);
 }
 
 export function buildVideoConstraints(value: VideoQuality): MediaTrackConstraints {
@@ -126,14 +129,14 @@ export function buildVideoConstraints(value: VideoQuality): MediaTrackConstraint
       facingMode: "environment",
       width: { ideal: 1280, max: 1280 },
       height: { ideal: 720, max: 720 },
-      frameRate: { ideal: 20, max: 24 }
+      frameRate: { ideal: 24, max: 30 }
     };
   }
 
   return {
     facingMode: "environment",
-    width: { ideal: 960, max: 1280 },
-    height: { ideal: 540, max: 720 },
-    frameRate: { ideal: 15, max: 20 }
+    width: { ideal: 1280, max: 1280 },
+    height: { ideal: 720, max: 720 },
+    frameRate: { ideal: 20, max: 24 }
   };
 }

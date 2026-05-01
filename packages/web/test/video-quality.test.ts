@@ -43,9 +43,9 @@ test("data saver maps to lower camera constraints", () => {
 test("balanced maps to latency-conscious camera constraints", () => {
   assert.deepEqual(buildVideoConstraints("balanced"), {
     facingMode: "environment",
-    width: { ideal: 960, max: 1280 },
-    height: { ideal: 540, max: 720 },
-    frameRate: { ideal: 15, max: 20 }
+    width: { ideal: 1280, max: 1280 },
+    height: { ideal: 720, max: 720 },
+    frameRate: { ideal: 20, max: 24 }
   });
 });
 
@@ -54,7 +54,7 @@ test("sharp maps to higher but bounded camera constraints", () => {
     facingMode: "environment",
     width: { ideal: 1280, max: 1280 },
     height: { ideal: 720, max: 720 },
-    frameRate: { ideal: 20, max: 24 }
+    frameRate: { ideal: 24, max: 30 }
   });
 });
 
@@ -64,12 +64,12 @@ test("video sender encoding is capped for low latency", () => {
     maxFramerate: 15
   });
   assert.deepEqual(buildVideoSenderEncoding("balanced"), {
-    maxBitrate: 900_000,
-    maxFramerate: 20
+    maxBitrate: 1_400_000,
+    maxFramerate: 24
   });
   assert.deepEqual(buildVideoSenderEncoding("sharp"), {
-    maxBitrate: 1_600_000,
-    maxFramerate: 24
+    maxBitrate: 2_200_000,
+    maxFramerate: 30
   });
 });
 
@@ -90,9 +90,10 @@ test("configureVideoSender applies bitrate and framerate caps", async () => {
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0]?.encodings?.[0], {
     active: true,
-    maxBitrate: 900_000,
-    maxFramerate: 20
+    maxBitrate: 1_400_000,
+    maxFramerate: 24
   });
+  assert.equal(calls[0]?.degradationPreference, "maintain-framerate");
 });
 
 test("saved video quality is reused", () => {
