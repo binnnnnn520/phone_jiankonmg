@@ -193,6 +193,10 @@ no-loopback-peers
 no-multicast-peers
 ```
 
+You can also start from the checked-in sample:
+
+- [turnserver.conf.example](turnserver.conf.example)
+
 This uses static long-term credentials because the current app expects static
 `username` and `credential` values inside `ICE_SERVERS_JSON`.
 

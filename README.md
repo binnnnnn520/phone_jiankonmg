@@ -63,6 +63,10 @@ npm install
 
 Copy `.env.example` to `.env`, or set the variables directly.
 
+For a public deployment shape, start from:
+
+- [.env.production.example](.env.production.example)
+
 Default local values:
 
 ```env
@@ -119,6 +123,7 @@ The repository already includes a public-IP plus `sslip.io` deployment path. See
 
 - [docs/operations/centos-7-ip-443-deploy.md](docs/operations/centos-7-ip-443-deploy.md)
 - [docs/operations/deploy-checklist.md](docs/operations/deploy-checklist.md)
+- [docs/operations/turnserver.conf.example](docs/operations/turnserver.conf.example)
 - [docs/operations/turn-and-signaling.md](docs/operations/turn-and-signaling.md)
 
 Current test endpoints:

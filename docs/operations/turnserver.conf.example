@@ -1,0 +1,23 @@
+# coturn sample for the current Phone Monitor server shape.
+#
+# This sample matches the current application behavior:
+# - the signaling service passes ICE_SERVERS_JSON directly to the browser
+# - the browser therefore expects static TURN username/password credentials
+# - temporary TURN REST credentials are not implemented yet
+
+listening-ip=0.0.0.0
+external-ip=REPLACE_WITH_PUBLIC_IP
+listening-port=3478
+
+min-port=49160
+max-port=49200
+
+fingerprint
+lt-cred-mech
+
+realm=REPLACE_WITH_PUBLIC_IP_OR_HOST
+server-name=REPLACE_WITH_PUBLIC_IP_OR_HOST
+user=phone-monitor:REPLACE_WITH_TURN_PASSWORD
+
+no-loopback-peers
+no-multicast-peers
