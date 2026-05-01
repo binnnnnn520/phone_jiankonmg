@@ -123,6 +123,7 @@ The repository already includes a public-IP plus `sslip.io` deployment path. See
 
 - [docs/operations/centos-7-ip-443-deploy.md](docs/operations/centos-7-ip-443-deploy.md)
 - [docs/operations/deploy-checklist.md](docs/operations/deploy-checklist.md)
+- [docs/operations/turn-rollout.md](docs/operations/turn-rollout.md)
 - [docs/operations/turnserver.conf.example](docs/operations/turnserver.conf.example)
 - [docs/operations/turn-and-signaling.md](docs/operations/turn-and-signaling.md)
 
