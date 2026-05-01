@@ -37,6 +37,7 @@ import {
 import { SignalingClient } from "./signaling-client.js";
 import {
   browserVideoQualityStorage,
+  applyVideoSdpBitrateHints,
   buildVideoConstraints,
   configureVideoSender,
   readVideoQuality,
@@ -430,8 +431,9 @@ export async function renderCamera(
     signaling.onMessage((message) => {
       if (message.type === "join-viewer") {
         void activePeerController.peer.createOffer().then(async (offer) => {
-          await activePeerController.peer.setLocalDescription(offer);
-          signaling?.send({ type: "offer", roomId: room.roomId, sdp: offer });
+          const tunedOffer = applyVideoSdpBitrateHints(offer, selectedVideoQuality);
+          await activePeerController.peer.setLocalDescription(tunedOffer);
+          signaling?.send({ type: "offer", roomId: room.roomId, sdp: tunedOffer });
         });
       }
       if (message.type === "peer-left") {

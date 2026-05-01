@@ -5,6 +5,7 @@ import {
   buildVideoSenderEncoding,
   buildVideoConstraints,
   configureVideoSender,
+  applyVideoSdpBitrateHints,
   readVideoQuality,
   saveVideoQuality
 } from "../src/video-quality.js";
@@ -93,7 +94,51 @@ test("configureVideoSender applies bitrate and framerate caps", async () => {
     maxBitrate: 1_400_000,
     maxFramerate: 24
   });
-  assert.equal(calls[0]?.degradationPreference, "maintain-framerate");
+  assert.equal(calls[0]?.degradationPreference, "balanced");
+});
+
+test("video SDP offer is seeded with startup bitrate hints", () => {
+  const offer: RTCSessionDescriptionInit = {
+    type: "offer",
+    sdp: [
+      "v=0",
+      "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+      "a=rtpmap:111 opus/48000/2",
+      "m=video 9 UDP/TLS/RTP/SAVPF 96 97 103 104",
+      "c=IN IP4 0.0.0.0",
+      "a=rtpmap:96 VP8/90000",
+      "a=rtpmap:97 rtx/90000",
+      "a=fmtp:97 apt=96",
+      "a=rtpmap:103 H264/90000",
+      "a=fmtp:103 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
+      "a=rtpmap:104 rtx/90000",
+      "a=fmtp:104 apt=103",
+      ""
+    ].join("\r\n")
+  };
+
+  const tunedOffer = applyVideoSdpBitrateHints(offer, "balanced");
+
+  assert.equal(tunedOffer.type, "offer");
+  assert.match(tunedOffer.sdp ?? "", /b=AS:1400/);
+  assert.match(
+    tunedOffer.sdp ?? "",
+    /a=fmtp:96 x-google-start-bitrate=1000;x-google-max-bitrate=1400;x-google-min-bitrate=400/
+  );
+  assert.match(
+    tunedOffer.sdp ?? "",
+    /a=fmtp:103 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f;x-google-start-bitrate=1000;x-google-max-bitrate=1400;x-google-min-bitrate=400/
+  );
+  assert.match(tunedOffer.sdp ?? "", /a=fmtp:97 apt=96/);
+  assert.doesNotMatch(tunedOffer.sdp ?? "", /a=fmtp:111 .*x-google/);
+});
+
+test("video SDP bitrate hints leave answers without SDP unchanged", () => {
+  const answer: RTCSessionDescriptionInit = {
+    type: "answer"
+  };
+
+  assert.deepEqual(applyVideoSdpBitrateHints(answer, "balanced"), answer);
 });
 
 test("saved video quality is reused", () => {
