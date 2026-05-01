@@ -19,6 +19,7 @@ Validation for the current public test deployment:
 - `coturn.service` was already installed, enabled, and active.
 - coturn was listening on `3478/tcp` and `3478/udp`.
 - Public TCP reachability to `47.86.100.51:3478` returned true.
+- Browser ICE gathering with `iceTransportPolicy: "relay"` returned a relay candidate from the public TURN configuration.
 - Host iptables policy was ACCEPT for input, forward, and output.
 
 ## ICE Configuration
@@ -54,6 +55,19 @@ Observed result:
 - viewer audio status: `Environment audio is live`
 - remote stream attached: yes
 - browser console errors: none
+
+## TURN Relay Allocation Check
+
+A browser-side relay-only ICE check used the public room `iceServers` and created
+a temporary `RTCPeerConnection` with `iceTransportPolicy: "relay"`.
+
+Observed result:
+
+- TURN config present: yes
+- relay candidate gathered: yes
+- relay candidate count: 1
+- ICE gathering completion event was not observed before the 12 second timeout,
+  but a relay candidate was gathered before timeout
 
 ## Remaining Manual Check
 
