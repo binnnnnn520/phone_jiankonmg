@@ -118,6 +118,7 @@ If a phone scans a QR code from the desktop, the QR target must not be the phone
 The repository already includes a public-IP plus `sslip.io` deployment path. See:
 
 - [docs/operations/centos-7-ip-443-deploy.md](docs/operations/centos-7-ip-443-deploy.md)
+- [docs/operations/deploy-checklist.md](docs/operations/deploy-checklist.md)
 - [docs/operations/turn-and-signaling.md](docs/operations/turn-and-signaling.md)
 
 Current test endpoints:
@@ -177,3 +178,8 @@ Minimal acceptance flow:
 - Continue improving same-Wi-Fi direct behavior
 - Add an Android-native camera-side app in a later phase for more reliable long-running foreground use
 - Add TURN for broader remote-network validation
+
+## Status reference
+
+- [docs/status/current-state.md](docs/status/current-state.md)
+- [docs/operations/deploy-checklist.md](docs/operations/deploy-checklist.md)

@@ -4,7 +4,7 @@ This guide is for the current test server:
 
 - Public IP: `47.86.100.51`
 - OS: CentOS 7.9 64-bit
-- Public inbound port: `443`
+- Existing HTTPS entry port: `443`
 - No owned domain yet
 
 The deployment uses `sslip.io` hostnames that resolve to the embedded IP:
@@ -18,11 +18,12 @@ them with a domain you control.
 
 ## Security Shape
 
-- Public internet exposes only port `443`.
+- Public internet must expose `443` for the app and signaling host.
 - The Node signaling server binds to `127.0.0.1:8787`.
 - Caddy terminates HTTPS and proxies `/ws` and API traffic to local `8787`.
 - Do not run the Vite dev server on the public server.
 - Do not open `8787` in the cloud firewall.
+- TURN relay is a separate requirement. Once TURN is added, the single-port-443 shape is no longer enough by itself. A TURN listener and relay port range must also be reachable from the public internet.
 
 Anyone who knows the app URL can load the page, but they still need a live room
 and the viewer PIN to watch. This is acceptable for a short technical test, not
@@ -108,7 +109,7 @@ Environment=SIGNALING_PORT=8787
 Environment=PUBLIC_SIGNALING_HTTP_URL=https://signal-47-86-100-51.sslip.io
 Environment=ROOM_TTL_SECONDS=600
 Environment=PIN_MAX_ATTEMPTS=5
-Environment='ICE_SERVERS_JSON=[{"urls":"stun:stun.l.google.com:19302"}]'
+Environment='ICE_SERVERS_JSON=[{"urls":"stun:stun.l.google.com:19302"},{"urls":["turn:47.86.100.51:3478?transport=udp","turn:47.86.100.51:3478?transport=tcp"],"username":"phone-monitor","credential":"REPLACE_WITH_TURN_PASSWORD"}]'
 ExecStart=/usr/bin/node packages/server/dist/src/index.js
 Restart=always
 RestartSec=3
@@ -132,7 +133,92 @@ Expected health output:
 {"ok":true}
 ```
 
-## 5. Install And Configure Caddy
+The app currently passes `ICE_SERVERS_JSON` straight through to the browser.
+That means the TURN entries in this file must use real static credentials that
+match the coturn configuration. The app does not mint temporary TURN
+credentials yet.
+
+## 5. Install And Configure TURN
+
+This product needs TURN for real remote-network reliability. HTTPS and signaling
+alone are not enough for viewer devices on mobile data or restrictive networks.
+
+### Required public firewall shape for TURN
+
+Open these ports to the public internet on the server:
+
+- `3478/udp` for TURN and STUN over UDP
+- `3478/tcp` for TURN over TCP fallback
+- a relay UDP port range such as `49160-49200/udp`
+
+Optional:
+
+- `5349/tcp` if you also want a dedicated TLS TURN listener
+
+Do not try to proxy TURN through Caddy. TURN relay is not ordinary HTTPS
+traffic, and the relay port range must be reachable directly.
+
+### Install coturn
+
+CentOS 7 images often need EPEL for the `coturn` package:
+
+```bash
+yum install -y epel-release
+yum install -y coturn
+turnserver -V
+```
+
+If the package is unavailable on the image, install coturn by another supported
+operator path before continuing.
+
+### Write `/etc/turnserver.conf`
+
+Create `/etc/turnserver.conf`:
+
+```ini
+listening-ip=0.0.0.0
+external-ip=47.86.100.51
+listening-port=3478
+
+min-port=49160
+max-port=49200
+
+fingerprint
+lt-cred-mech
+realm=47.86.100.51
+server-name=47.86.100.51
+user=phone-monitor:REPLACE_WITH_TURN_PASSWORD
+
+no-loopback-peers
+no-multicast-peers
+```
+
+This uses static long-term credentials because the current app expects static
+`username` and `credential` values inside `ICE_SERVERS_JSON`.
+
+If you later add TURN REST temporary credentials in the app and signaling
+service, this file can move to `use-auth-secret` instead. That is not part of
+the current implementation.
+
+### Start coturn
+
+On CentOS packages, the service name is typically `coturn` or `turnserver`.
+Use the one provided by the package on the server.
+
+Example:
+
+```bash
+systemctl enable --now coturn
+systemctl status coturn --no-pager
+ss -lntup | grep 3478
+```
+
+Expected result:
+
+- TURN is listening on `0.0.0.0:3478`
+- the chosen relay UDP range is allowed in the cloud firewall and local firewall
+
+## 6. Install And Configure Caddy
 
 Caddy's packaged install currently documents `dnf` for CentOS/RHEL. CentOS 7
 servers often only have `yum`, so use the packaged path if `dnf` is available;
@@ -227,7 +313,7 @@ test:
 caddy run --config /etc/caddy/Caddyfile
 ```
 
-## 6. Validate From Outside The Server
+## 7. Validate From Outside The Server
 
 From your Windows machine:
 
@@ -243,9 +329,26 @@ Then open:
 Use the old phone as the camera. Use mobile data on the viewer phone for the
 real outside-network test.
 
-## Expected Failure That Means TURN Is Needed
+Before the real device test, also confirm the signaling service is serving TURN
+entries to the browser:
+
+- create a room from the camera page
+- inspect the room creation response in the browser network tab
+- confirm `iceServers` includes both the public STUN entry and the public TURN
+  entries with the static credentials you configured
+
+## 8. TURN Validation Outcome
 
 If both HTTPS pages load, the room and PIN work, but the viewer video stays
-black or stuck on connecting from mobile data, the HTTPS/signaling deployment is
-working and the next missing piece is TURN. Add coturn later and replace
-`ICE_SERVERS_JSON` with STUN plus TURN credentials.
+black or stuck on connecting from mobile data, the HTTPS/signaling deployment
+is working but TURN is still not usable. Check these in order:
+
+1. `ICE_SERVERS_JSON` really contains public TURN entries, not only STUN
+2. TURN username and password match the coturn `user=` line
+3. `3478/udp` and the relay UDP range are open in the cloud firewall
+4. the server's local firewall also allows the same ports
+5. coturn is listening on the intended public interface
+6. the viewer test is being run from a truly remote network such as mobile data
+
+Do not treat the deployment as remote-ready until a real external viewer session
+works through the deployed HTTPS/WSS/TURN path.
